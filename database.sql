@@ -104,9 +104,6 @@ CREATE TABLE wishlist (
     FOREIGN KEY (product_id) REFERENCES products(product_id)
 );
 
--- Add user_type column to users table
-ALTER TABLE users ADD COLUMN user_type ENUM('admin', 'vendor', 'customer', 'staff') NOT NULL DEFAULT 'customer';
-
 -- Categories
 CREATE TABLE categories (
        category_id INT AUTO_INCREMENT PRIMARY KEY,
@@ -160,3 +157,9 @@ ALTER TABLE products ADD updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
 
 -- Add foreign key constraint to products table
 ALTER TABLE products ADD CONSTRAINT fk_product_category FOREIGN KEY (category_id) REFERENCES categories(category_id);
+
+-- Add security_question, security_answer, and phone_number columns to users table
+ALTER TABLE users 
+ADD COLUMN security_question VARCHAR(255) DEFAULT NULL,
+ADD COLUMN security_answer VARCHAR(255) DEFAULT NULL,
+ADD COLUMN phone_number VARCHAR(20) DEFAULT NULL;

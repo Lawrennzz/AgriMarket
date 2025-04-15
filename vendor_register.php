@@ -14,61 +14,76 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $email = mysqli_real_escape_string($conn, $_POST['email']);
     $password = $_POST['password'];
     $confirm_password = $_POST['confirm_password'];
-    $user_type = mysqli_real_escape_string($conn, $_POST['role']);
-    $username = $_POST['username'];
-    $security_question = mysqli_real_escape_string($conn, $_POST['security_question']);
-    $security_answer = mysqli_real_escape_string($conn, $_POST['security_answer']);
-    $phone_number = mysqli_real_escape_string($conn, $_POST['phone_number']);
-
-    // Debugging: Check if username is set
-    if (empty($username)) {
-        echo "Username is empty.";
-    } else {
-        echo "Username: " . $username; // This will help you see if the username is being captured
-    }
-
-    // Validate email
+    $username = mysqli_real_escape_string($conn, $_POST['username']);
+    $business_name = mysqli_real_escape_string($conn, $_POST['business_name']);
+    $subscription_tier = mysqli_real_escape_string($conn, $_POST['subscription_tier']);
+    
+    // Validate inputs
     if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
         $error = "Invalid email format";
-    }
-    // Check if passwords match
-    else if ($password !== $confirm_password) {
+    } else if ($password !== $confirm_password) {
         $error = "Passwords do not match";
-    }
-    // Check password strength
-    else if (strlen($password) < 8) {
+    } else if (strlen($password) < 8) {
         $error = "Password must be at least 8 characters long";
-    }
-    else {
-        // Check if email already exists
-        $check_sql = "SELECT * FROM users WHERE email = ?";
+    } else if (empty($business_name)) {
+        $error = "Business name is required";
+    } else {
+        // Check if email or username already exists
+        $check_sql = "SELECT * FROM users WHERE email = ? OR username = ?";
         $check_stmt = mysqli_prepare($conn, $check_sql);
-        mysqli_stmt_bind_param($check_stmt, "s", $email);
+        mysqli_stmt_bind_param($check_stmt, "ss", $email, $username);
         mysqli_stmt_execute($check_stmt);
         $check_result = mysqli_stmt_get_result($check_stmt);
 
         if (mysqli_num_rows($check_result) > 0) {
-            $error = "Email already exists";
+            $error = "Email or username already exists";
         } else {
-            $hashed_password = password_hash($password, PASSWORD_DEFAULT);
-            
-            $sql = "INSERT INTO users (username, name, email, password, role, security_question, security_answer, phone_number) VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
-            $stmt = mysqli_prepare($conn, $sql);
-            mysqli_stmt_bind_param($stmt, "ssssssss", $username, $name, $email, $hashed_password, $user_type, $security_question, $security_answer, $phone_number);
-            
-            if (mysqli_stmt_execute($stmt)) {
-                $success = "Registration successful! Please login.";
-            } else {
-                $error = "Error occurred during registration";
+            // Start transaction
+            mysqli_begin_transaction($conn);
+            try {
+                // Insert into users table
+                $hashed_password = password_hash($password, PASSWORD_DEFAULT);
+                $role = 'vendor';
+                
+                $user_sql = "INSERT INTO users (username, name, email, password, role) VALUES (?, ?, ?, ?, ?)";
+                $stmt = mysqli_prepare($conn, $user_sql);
+
+                if ($stmt === false) {
+                    die('MySQL prepare error: ' . mysqli_error($conn));
+                }
+
+                mysqli_stmt_bind_param($stmt, 'sssss', $username, $name, $email, $hashed_password, $role);
+                
+                if (mysqli_stmt_execute($stmt)) {
+                    $user_id = mysqli_insert_id($conn);
+                    
+                    // Insert into vendors table
+                    $vendor_sql = "INSERT INTO vendors (user_id, business_name, subscription_tier) VALUES (?, ?, ?)";
+                    $vendor_stmt = mysqli_prepare($conn, $vendor_sql);
+                    mysqli_stmt_bind_param($vendor_stmt, "iss", $user_id, $business_name, $subscription_tier);
+                    
+                    if (mysqli_stmt_execute($vendor_stmt)) {
+                        mysqli_commit($conn);
+                        $success = "Vendor registration successful! Please login.";
+                    } else {
+                        throw new Exception("Error inserting vendor details");
+                    }
+                } else {
+                    throw new Exception("Error inserting user details");
+                }
+            } catch (Exception $e) {
+                mysqli_rollback($conn);
+                $error = "Error occurred during registration: " . $e->getMessage();
             }
         }
     }
 }
 ?>
+
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Register - AgriMarket</title>
+    <title>Vendor Register - AgriMarket</title>
     <link rel="stylesheet" href="styles.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
@@ -100,10 +115,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             margin-bottom: 0.5rem;
         }
 
-        .register-header p {
-            color: var(--medium-gray);
-        }
-
         .form-group {
             margin-bottom: 1.5rem;
             position: relative;
@@ -119,41 +130,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 
         .form-control {
             padding-left: 2.5rem;
-        }
-
-        .user-type-selector {
-            display: flex;
-            gap: 1rem;
-            margin-bottom: 1.5rem;
-        }
-
-        .user-type-option {
-            flex: 1;
-            text-align: center;
-        }
-
-        .user-type-option input[type="radio"] {
-            display: none;
-        }
-
-        .user-type-option label {
-            display: block;
-            padding: 1rem;
-            border: 2px solid var(--light-gray);
-            border-radius: var(--border-radius);
-            cursor: pointer;
-            transition: var(--transition);
-        }
-
-        .user-type-option input[type="radio"]:checked + label {
-            border-color: var(--primary-color);
-            background-color: rgba(76, 175, 80, 0.1);
-        }
-
-        .user-type-option i {
-            font-size: 1.5rem;
-            margin-bottom: 0.5rem;
-            color: var(--primary-color);
         }
 
         .register-btn {
@@ -199,8 +175,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     <div class="register-container">
         <div class="register-card">
             <div class="register-header">
-                <h1>Create Account</h1>
-                <p>Join AgriMarket today</p>
+                <h1>Vendor Registration</h1>
+                <p>Join AgriMarket as a Vendor</p>
             </div>
 
             <?php if ($error): ?>
@@ -216,11 +192,11 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             <?php endif; ?>
 
             <form method="POST" action="">
-            <form action="register.php" method="POST">
                 <div class="form-group">
                     <i class="fas fa-user"></i>
-                    <input type="text" name="username" id="username" class="form-control" placeholder="Enter your username" required>
+                    <input type="text" name="username" class="form-control" placeholder="Username" required>
                 </div>
+
                 <div class="form-group">
                     <i class="fas fa-user"></i>
                     <input type="text" name="name" class="form-control" placeholder="Full Name" required>
@@ -242,40 +218,24 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 </div>
 
                 <div class="form-group">
-                    <i class="fas fa-user-tag"></i>
-                    <select name="role" id="role" class="form-control" required>
-                        <option value="customer">Customer</option>
-                        <option value="vendor">Vendor</option>
-                        <option value="admin">Admin</option>
-                        <option value="staff">Staff</option>    
+                    <i class="fas fa-store"></i>
+                    <input type="text" name="business_name" class="form-control" placeholder="Business Name" required>
+                </div>
+
+                <div class="form-group">
+                    <i class="fas fa-layer-group"></i>
+                    <select name="subscription_tier" class="form-control" required>
+                        <option value="basic">Basic</option>
+                        <option value="premium">Premium</option>
+                        <option value="enterprise">Enterprise</option>
                     </select>
                 </div>
 
-                <div class="form-group">
-                    <i class="fas fa-question"></i>
-                    <select name="security_question" id="security_question" class="form-control" required>
-                        <option value="">Select a question</option>
-                        <option value="What is your mother's maiden name?">What is your mother's maiden name?</option>
-                        <option value="What was the name of your first pet?">What was the name of your first pet?</option>
-                        <option value="What is your favorite color?">What is your favorite color?</option>
-                    </select>
-                </div>
-
-                <div class="form-group">
-                    <i class="fas fa-check"></i>
-                    <input type="text" name="security_answer" id="security_answer" class="form-control" placeholder="Security Answer" required>
-                </div>
-
-                <div class="form-group">
-                    <i class="fas fa-phone"></i>
-                    <input type="text" name="phone_number" id="phone_number" class="form-control" placeholder="Phone Number" required>
-                </div>
-                
-                <button type="submit" class="btn btn-primary register-btn">Create Account</button>
+                <button type="submit" class="btn btn-primary register-btn">Register as Vendor</button>
 
                 <div class="login-link">
                     Already have an account? <a href="login.php">Login</a>
-                    | <a href="vendor_register.php">Register as Vendor</a>
+                    | <a href="register.php">Register as Customer</a>
                 </div>
             </form>
         </div>

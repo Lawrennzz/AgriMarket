@@ -8,11 +8,12 @@ if (!isset($_GET['id'])) {
 
 $product_id = (int)$_GET['id'];
 
-// Get product details with vendor information
-$sql = "SELECT p.*, u.name as vendor_name, u.email as vendor_email 
+// Get product details with vendor and category information
+$sql = "SELECT p.*, u.name as vendor_name, u.email as vendor_email, c.name as category_name 
         FROM products p 
         JOIN vendors v ON p.vendor_id = v.vendor_id 
         JOIN users u ON v.user_id = u.user_id 
+        JOIN categories c ON p.category_id = c.category_id 
         WHERE p.product_id = ?";
 $stmt = mysqli_prepare($conn, $sql);
 mysqli_stmt_bind_param($stmt, "i", $product_id);
@@ -26,10 +27,10 @@ if (!$product = mysqli_fetch_assoc($result)) {
 
 // Get related products
 $related_sql = "SELECT * FROM products 
-                WHERE category = ? AND product_id != ? 
+                WHERE category_id = ? AND product_id != ? 
                 LIMIT 4";
 $related_stmt = mysqli_prepare($conn, $related_sql);
-mysqli_stmt_bind_param($related_stmt, "si", $product['category'], $product_id);
+mysqli_stmt_bind_param($related_stmt, "ii", $product['category_id'], $product_id);
 mysqli_stmt_execute($related_stmt);
 $related_result = mysqli_stmt_get_result($related_stmt);
 
@@ -292,7 +293,9 @@ mysqli_stmt_execute($analytics_stmt);
         <div class="breadcrumb">
             <a href="products.php">Products</a>
             <i class="fas fa-chevron-right"></i>
-            <a href="products.php?category=<?php echo urlencode($product['category']); ?>"><?php echo ucfirst(htmlspecialchars($product['category'])); ?></a>
+            <a href="products.php?category=<?php echo urlencode($product['category_id']); ?>">
+                <?php echo htmlspecialchars($product['category_name']); ?>
+            </a>
             <i class="fas fa-chevron-right"></i>
             <span><?php echo htmlspecialchars($product['name']); ?></span>
         </div>
@@ -305,7 +308,7 @@ mysqli_stmt_execute($analytics_stmt);
             </div>
 
             <div class="product-info">
-                <div class="product-category"><?php echo htmlspecialchars($product['category']); ?></div>
+                <div class="product-category"><?php echo htmlspecialchars($product['category_name']); ?></div>
                 <h1 class="product-title"><?php echo htmlspecialchars($product['name']); ?></h1>
                 
                 <div class="product-meta">
