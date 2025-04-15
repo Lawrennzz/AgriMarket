@@ -377,7 +377,7 @@ mysqli_query($conn, "INSERT INTO analytics (type, product_id, count) VALUES ('vi
         <div class="reviews-section">
             <div class="reviews-header">
                 <h2>Customer Reviews</h2>
-                <?php if (isset($_SESSION['user_id']) && $_SESSION['user_type'] !== 'vendor'): ?>
+                <?php if (isset($_SESSION['user_id']) && $_SESSION['role'] !== 'vendor'): ?>
                     <a href="add-review.php?product_id=<?php echo $product_id; ?>" class="btn btn-primary">Write a Review</a>
                 <?php endif; ?>
             </div>

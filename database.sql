@@ -88,3 +88,49 @@ CREATE TABLE analytics (
 
 -- Update products table to add featured column 
 ALTER TABLE products ADD COLUMN featured TINYINT(1) DEFAULT 0;
+
+-- Order items
+CREATE TABLE order_items (
+       item_id INT AUTO_INCREMENT PRIMARY KEY,
+       order_id INT,
+       product_id INT,
+       quantity INT NOT NULL,
+       price DECIMAL(10,2) NOT NULL,
+       FOREIGN KEY (order_id) REFERENCES orders(order_id),
+       FOREIGN KEY (product_id) REFERENCES products(product_id)
+   );
+
+-- Add image_url column to products table
+ALTER TABLE products ADD COLUMN image_url VARCHAR(255);
+
+-- Add name column to users table
+ALTER TABLE users ADD COLUMN name VARCHAR(100);
+
+-- Wishlist
+CREATE TABLE wishlist (
+    wishlist_id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT,
+    product_id INT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(user_id),
+    FOREIGN KEY (product_id) REFERENCES products(product_id)
+);
+
+-- Add user_type column to users table
+ALTER TABLE users ADD COLUMN user_type ENUM('admin', 'vendor', 'customer', 'staff') NOT NULL DEFAULT 'customer';
+
+-- Categories
+CREATE TABLE categories (
+       category_id INT AUTO_INCREMENT PRIMARY KEY,
+       name VARCHAR(100) NOT NULL,
+       description TEXT
+   );
+
+-- Insert default categories
+INSERT INTO categories (name, description) VALUES
+('Livestock', 'Cattle, poultry, hogs, etc.'),
+('Crops', 'Corn, soybeans, hay, etc.'),
+('Edible Forestry Products', 'Almonds, walnuts, etc.'),
+('Dairy', 'Milk products'),
+('Fish Farming', 'Aquaculture products'),
+('Miscellaneous', 'Honey, etc.');

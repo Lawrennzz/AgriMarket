@@ -8,7 +8,7 @@ if (!isset($_SESSION['user_id'])) {
 
 // Get user information
 $user_id = $_SESSION['user_id'];
-$user_type = $_SESSION['user_type'];
+$role = $_SESSION['role'];
 
 // Get user details
 $user_sql = "SELECT * FROM users WHERE user_id = ?";
@@ -17,23 +17,33 @@ mysqli_stmt_bind_param($user_stmt, "i", $user_id);
 mysqli_stmt_execute($user_stmt);
 $user = mysqli_fetch_assoc(mysqli_stmt_get_result($user_stmt));
 
-if ($user_type === 'vendor') {
+if ($role === 'vendor') {
     // Get vendor statistics
     $products_count = mysqli_fetch_assoc(mysqli_query($conn, 
         "SELECT COUNT(*) as count FROM products WHERE vendor_id = $user_id"))['count'];
     
-    $total_sales = mysqli_fetch_assoc(mysqli_query($conn, 
-        "SELECT COALESCE(SUM(o.quantity * p.price), 0) as total 
-         FROM orders o 
-         JOIN products p ON o.product_id = p.product_id 
-         WHERE p.vendor_id = $user_id"))['total'];
+    // Prepare the SQL query
+    $query = "
+        SELECT COALESCE(SUM(oi.quantity * p.price), 0) AS total
+        FROM orders o
+        JOIN order_items oi ON o.order_id = oi.order_id
+        JOIN products p ON oi.product_id = p.product_id
+        WHERE o.user_id = ?;";
+
+    // Prepare the statement
+    $stmt = mysqli_prepare($conn, $query);
+    mysqli_stmt_bind_param($stmt, "i", $user_id);
+    mysqli_stmt_execute($stmt);
+    $result = mysqli_stmt_get_result($stmt);
+    $total_sales = mysqli_fetch_assoc($result);
     
     $recent_orders = mysqli_query($conn, 
-        "SELECT o.*, p.name as product_name, u.name as customer_name 
+        "SELECT o.*, p.name AS product_name, p.image_url, u.username AS vendor_name 
          FROM orders o 
-         JOIN products p ON o.product_id = p.product_id 
-         JOIN users u ON o.user_id = u.user_id 
-         WHERE p.vendor_id = $user_id 
+         JOIN order_items oi ON o.order_id = oi.order_id 
+         JOIN products p ON oi.product_id = p.product_id 
+         JOIN users u ON p.vendor_id = u.user_id 
+         WHERE o.user_id = $user_id 
          ORDER BY o.created_at DESC LIMIT 5");
     
     $low_stock_products = mysqli_query($conn, 
@@ -45,16 +55,25 @@ if ($user_type === 'vendor') {
     $orders_count = mysqli_fetch_assoc(mysqli_query($conn, 
         "SELECT COUNT(*) as count FROM orders WHERE user_id = $user_id"))['count'];
     
-    $total_spent = mysqli_fetch_assoc(mysqli_query($conn, 
-        "SELECT COALESCE(SUM(o.quantity * p.price), 0) as total 
-         FROM orders o 
-         JOIN products p ON o.product_id = p.product_id 
-         WHERE o.user_id = $user_id"))['total'];
+    // Prepare the SQL query
+    $query = "
+        SELECT COALESCE(SUM(oi.quantity * oi.price), 0) AS total
+        FROM order_items oi 
+        JOIN orders o ON oi.order_id = o.order_id 
+        WHERE o.user_id = ?;";
+
+    // Prepare the statement
+    $stmt = mysqli_prepare($conn, $query);
+    mysqli_stmt_bind_param($stmt, "i", $user_id);
+    mysqli_stmt_execute($stmt);
+    $result = mysqli_stmt_get_result($stmt);
+    $total_spent = mysqli_fetch_assoc($result);
     
     $recent_orders = mysqli_query($conn, 
-        "SELECT o.*, p.name as product_name, p.image_url, u.name as vendor_name 
+        "SELECT o.*, p.name AS product_name, p.image_url, u.username AS vendor_name 
          FROM orders o 
-         JOIN products p ON o.product_id = p.product_id 
+         JOIN order_items oi ON o.order_id = oi.order_id 
+         JOIN products p ON oi.product_id = p.product_id 
          JOIN users u ON p.vendor_id = u.user_id 
          WHERE o.user_id = $user_id 
          ORDER BY o.created_at DESC LIMIT 5");
@@ -269,7 +288,7 @@ if ($user_type === 'vendor') {
             <h1 class="welcome-message">Welcome back, <?php echo htmlspecialchars($user['name']); ?>!</h1>
         </div>
 
-        <?php if ($user_type === 'vendor'): ?>
+        <?php if ($role === 'vendor'): ?>
             <!-- Vendor Dashboard -->
             <div class="stats-grid">
                 <div class="stat-card">
@@ -279,7 +298,7 @@ if ($user_type === 'vendor') {
                 </div>
                 <div class="stat-card">
                     <i class="fas fa-dollar-sign"></i>
-                    <div class="stat-value">$<?php echo number_format($total_sales, 2); ?></div>
+                    <div class="stat-value">$<?php echo number_format($total_sales['total'], 2); ?></div>
                     <div class="stat-label">Total Sales</div>
                 </div>
                 <div class="stat-card">
@@ -300,7 +319,7 @@ if ($user_type === 'vendor') {
                             <div class="order-details">
                                 <div class="order-product"><?php echo htmlspecialchars($order['product_name']); ?></div>
                                 <div class="order-meta">
-                                    <span>Ordered by <?php echo htmlspecialchars($order['customer_name']); ?></span>
+                                    <span>Sold by <?php echo htmlspecialchars($order['vendor_name']); ?></span>
                                     <span> • </span>
                                     <span><?php echo date('M d, Y', strtotime($order['created_at'])); ?></span>
                                 </div>
@@ -359,7 +378,7 @@ if ($user_type === 'vendor') {
                 </div>
                 <div class="stat-card">
                     <i class="fas fa-dollar-sign"></i>
-                    <div class="stat-value">$<?php echo number_format($total_spent, 2); ?></div>
+                    <div class="stat-value">$<?php echo number_format($total_spent['total'], 2); ?></div>
                     <div class="stat-label">Total Spent</div>
                 </div>
                 <div class="stat-card">

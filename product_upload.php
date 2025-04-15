@@ -2,7 +2,7 @@
 include 'config.php';
 
 // Check if user is logged in and is a vendor
-if (!isset($_SESSION['user_id']) || $_SESSION['user_type'] !== 'vendor') {
+if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'vendor') {
     header("Location: login.php");
     exit();
 }

@@ -6,7 +6,7 @@ $search = isset($_GET['search']) ? mysqli_real_escape_string($conn, $_GET['searc
 $sort = isset($_GET['sort']) ? $_GET['sort'] : 'name_asc';
 $view = isset($_GET['view']) ? $_GET['view'] : 'grid';
 
-$sql = "SELECT p.*, u.name as vendor_name FROM products p 
+$sql = "SELECT p.*, username as vendor_name FROM products p 
         LEFT JOIN users u ON p.vendor_id = u.user_id";
 
 $where_conditions = [];

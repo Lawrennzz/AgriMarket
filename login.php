@@ -21,7 +21,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     if ($user = mysqli_fetch_assoc($result)) {
         if (password_verify($password, $user['password'])) {
             $_SESSION['user_id'] = $user['user_id'];
-            $_SESSION['user_type'] = $user['user_type'];
+            $_SESSION['role'] = $user['role'];
             $_SESSION['name'] = $user['name'];
             
             header("Location: dashboard.php");

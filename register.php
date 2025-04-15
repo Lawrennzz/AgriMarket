@@ -14,7 +14,15 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $email = mysqli_real_escape_string($conn, $_POST['email']);
     $password = $_POST['password'];
     $confirm_password = $_POST['confirm_password'];
-    $user_type = mysqli_real_escape_string($conn, $_POST['user_type']);
+    $user_type = mysqli_real_escape_string($conn, $_POST['role']);
+    $username = $_POST['username'];
+
+    // Debugging: Check if username is set
+    if (empty($username)) {
+        echo "Username is empty.";
+    } else {
+        echo "Username: " . $username; // This will help you see if the username is being captured
+    }
 
     // Validate email
     if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
@@ -41,9 +49,9 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         } else {
             $hashed_password = password_hash($password, PASSWORD_DEFAULT);
             
-            $sql = "INSERT INTO users (name, email, password, user_type) VALUES (?, ?, ?, ?)";
+            $sql = "INSERT INTO users (username, name, email, password, role) VALUES (?, ?, ?, ?, ?)";
             $stmt = mysqli_prepare($conn, $sql);
-            mysqli_stmt_bind_param($stmt, "ssss", $name, $email, $hashed_password, $user_type);
+            mysqli_stmt_bind_param($stmt, "sssss", $username, $name, $email, $hashed_password, $user_type);
             
             if (mysqli_stmt_execute($stmt)) {
                 $success = "Registration successful! Please login.";
@@ -205,6 +213,11 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             <?php endif; ?>
 
             <form method="POST" action="">
+            <form action="register.php" method="POST">
+                <div class="form-group">
+                    <i class="fas fa-user"></i>
+                    <input type="text" name="username" id="username" class="form-control" placeholder="Enter your username" required>
+                </div>
                 <div class="form-group">
                     <i class="fas fa-user"></i>
                     <input type="text" name="name" class="form-control" placeholder="Full Name" required>
@@ -225,23 +238,16 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                     <input type="password" name="confirm_password" class="form-control" placeholder="Confirm Password" required>
                 </div>
 
-                <div class="user-type-selector">
-                    <div class="user-type-option">
-                        <input type="radio" id="customer" name="user_type" value="customer" required checked>
-                        <label for="customer">
-                            <i class="fas fa-user"></i>
-                            <div>Customer</div>
-                        </label>
-                    </div>
-                    <div class="user-type-option">
-                        <input type="radio" id="vendor" name="user_type" value="vendor" required>
-                        <label for="vendor">
-                            <i class="fas fa-store"></i>
-                            <div>Vendor</div>
-                        </label>
-                    </div>
+                <div class="form-group">
+                    <i class="fas fa-user-tag"></i>
+                    <select name="role" id="role" class="form-control" required>
+                        <option value="customer">Customer</option>
+                        <option value="vendor">Vendor</option>
+                        <option value="admin">Admin</option>
+                        <option value="staff">Staff</option>    
+                    </select>
                 </div>
-
+                
                 <button type="submit" class="btn btn-primary register-btn">Create Account</button>
 
                 <div class="login-link">

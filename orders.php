@@ -7,7 +7,7 @@ if (!isset($_SESSION['user_id'])) {
 }
 
 $user_id = $_SESSION['user_id'];
-$user_type = $_SESSION['user_type'];
+$role = $_SESSION['role'];
 
 // Get filter parameters
 $status = isset($_GET['status']) ? $_GET['status'] : 'all';
@@ -17,10 +17,10 @@ $per_page = 10;
 $offset = ($page - 1) * $per_page;
 
 // Build query based on user type
-if ($user_type === 'vendor') {
+if ($role === 'vendor') {
     $base_query = "
         SELECT o.*, u.name as customer_name, u.email as customer_email,
-               COUNT(oi.order_item_id) as items_count,
+               COUNT(oi.item_id) as items_count,
                GROUP_CONCAT(DISTINCT p.name SEPARATOR ', ') as product_names
         FROM orders o
         JOIN users u ON o.user_id = u.user_id
@@ -31,7 +31,7 @@ if ($user_type === 'vendor') {
 } else {
     $base_query = "
         SELECT o.*, 
-               COUNT(oi.order_item_id) as items_count,
+               COUNT(oi.item_id) as items_count,
                GROUP_CONCAT(DISTINCT p.name SEPARATOR ', ') as product_names
         FROM orders o
         JOIN order_items oi ON o.order_id = oi.order_id
@@ -259,7 +259,7 @@ $orders = mysqli_query($conn, $orders_query);
         <div class="orders-container">
             <div class="orders-header">
                 <h1 class="page-title">
-                    <?php echo $user_type === 'vendor' ? 'Manage Orders' : 'My Orders'; ?>
+                    <?php echo $role === 'vendor' ? 'Manage Orders' : 'My Orders'; ?>
                 </h1>
 
                 <div class="filters">
@@ -285,7 +285,7 @@ $orders = mysqli_query($conn, $orders_query);
                 <thead>
                     <tr>
                         <th>Order ID</th>
-                        <?php if ($user_type === 'vendor'): ?>
+                        <?php if ($role === 'vendor'): ?>
                             <th>Customer</th>
                         <?php endif; ?>
                         <th>Products</th>
@@ -299,7 +299,7 @@ $orders = mysqli_query($conn, $orders_query);
                     <?php while ($order = mysqli_fetch_assoc($orders)): ?>
                         <tr>
                             <td class="order-id">#<?php echo str_pad($order['order_id'], 8, '0', STR_PAD_LEFT); ?></td>
-                            <?php if ($user_type === 'vendor'): ?>
+                            <?php if ($role === 'vendor'): ?>
                                 <td>
                                     <div><?php echo htmlspecialchars($order['customer_name']); ?></div>
                                     <div class="order-products"><?php echo htmlspecialchars($order['customer_email']); ?></div>
