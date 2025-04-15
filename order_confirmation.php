@@ -229,7 +229,7 @@ $items_query = mysqli_query($conn, "
                 </div>
                 <div class="detail-row">
                     <span class="detail-label">Total Amount</span>
-                    <span class="detail-value">$<?php echo number_format($order['total_amount'], 2); ?></span>
+                    <span class="detail-value">$<?php echo number_format($order['total'], 2); ?></span>
                 </div>
             </div>
 

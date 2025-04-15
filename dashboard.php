@@ -17,76 +17,104 @@ mysqli_stmt_bind_param($user_stmt, "i", $user_id);
 mysqli_stmt_execute($user_stmt);
 $user = mysqli_fetch_assoc(mysqli_stmt_get_result($user_stmt));
 
+// Get vendor_id for the user
+$vendor_query = "SELECT vendor_id FROM vendors WHERE user_id = ?";
+$vendor_stmt = mysqli_prepare($conn, $vendor_query);
+mysqli_stmt_bind_param($vendor_stmt, "i", $user_id);
+mysqli_stmt_execute($vendor_stmt);
+$vendor_result = mysqli_stmt_get_result($vendor_stmt);
+$vendor = mysqli_fetch_assoc($vendor_result);
+$vendor_id = $vendor['vendor_id'] ?? 0; // Fallback to 0 if no vendor_id found
+mysqli_stmt_close($vendor_stmt);
+
 if ($role === 'vendor') {
     // Get vendor statistics
-    $products_count = mysqli_fetch_assoc(mysqli_query($conn, 
-        "SELECT COUNT(*) as count FROM products WHERE vendor_id = $user_id"))['count'];
+    $products_count_query = "SELECT COUNT(*) as count FROM products WHERE vendor_id = ?";
+    $products_count_stmt = mysqli_prepare($conn, $products_count_query);
+    mysqli_stmt_bind_param($products_count_stmt, "i", $vendor_id);
+    mysqli_stmt_execute($products_count_stmt);
+    $products_count = mysqli_fetch_assoc(mysqli_stmt_get_result($products_count_stmt))['count'];
     
-    // Prepare the SQL query
+    // Prepare the SQL query for total sales
     $query = "
         SELECT COALESCE(SUM(oi.quantity * p.price), 0) AS total
         FROM orders o
         JOIN order_items oi ON o.order_id = oi.order_id
         JOIN products p ON oi.product_id = p.product_id
-        WHERE o.user_id = ?;";
-
-    // Prepare the statement
+        WHERE p.vendor_id = ?";
     $stmt = mysqli_prepare($conn, $query);
-    mysqli_stmt_bind_param($stmt, "i", $user_id);
+    mysqli_stmt_bind_param($stmt, "i", $vendor_id);
     mysqli_stmt_execute($stmt);
     $result = mysqli_stmt_get_result($stmt);
     $total_sales = mysqli_fetch_assoc($result);
     
-    $recent_orders = mysqli_query($conn, 
-        "SELECT o.*, p.name AS product_name, p.image_url, u.username AS vendor_name 
-         FROM orders o 
-         JOIN order_items oi ON o.order_id = oi.order_id 
-         JOIN products p ON oi.product_id = p.product_id 
-         JOIN users u ON p.vendor_id = u.user_id 
-         WHERE o.user_id = $user_id 
-         ORDER BY o.created_at DESC LIMIT 5");
+    // Get recent orders with quantity
+    $recent_orders_query = "
+        SELECT o.*, p.name AS product_name, p.image_url, u.username AS customer_name, oi.quantity 
+        FROM orders o 
+        JOIN order_items oi ON o.order_id = oi.order_id 
+        JOIN products p ON oi.product_id = p.product_id 
+        JOIN users u ON o.user_id = u.user_id 
+        WHERE p.vendor_id = ? 
+        ORDER BY o.created_at DESC LIMIT 5";
+    $recent_orders_stmt = mysqli_prepare($conn, $recent_orders_query);
+    mysqli_stmt_bind_param($recent_orders_stmt, "i", $vendor_id);
+    mysqli_stmt_execute($recent_orders_stmt);
+    $recent_orders = mysqli_stmt_get_result($recent_orders_stmt);
     
-    $low_stock_products = mysqli_query($conn, 
-        "SELECT * FROM products 
-         WHERE vendor_id = $user_id AND stock < 10 
-         ORDER BY stock ASC LIMIT 5");
+    // Get low stock products
+    $low_stock_query = "SELECT * FROM products WHERE vendor_id = ? AND stock < 10 ORDER BY stock ASC LIMIT 5";
+    $low_stock_stmt = mysqli_prepare($conn, $low_stock_query);
+    mysqli_stmt_bind_param($low_stock_stmt, "i", $vendor_id);
+    mysqli_stmt_execute($low_stock_stmt);
+    $low_stock_products = mysqli_stmt_get_result($low_stock_stmt);
 } else {
-    // Get customer statistics
-    $orders_count = mysqli_fetch_assoc(mysqli_query($conn, 
-        "SELECT COUNT(*) as count FROM orders WHERE user_id = $user_id"))['count'];
+    // Customer dashboard logic remains unchanged
+    $orders_count_query = "SELECT COUNT(*) as count FROM orders WHERE user_id = ?";
+    $orders_count_stmt = mysqli_prepare($conn, $orders_count_query);
+    mysqli_stmt_bind_param($orders_count_stmt, "i", $user_id);
+    mysqli_stmt_execute($orders_count_stmt);
+    $orders_count = mysqli_fetch_assoc(mysqli_stmt_get_result($orders_count_stmt))['count'];
     
-    // Prepare the SQL query
     $query = "
         SELECT COALESCE(SUM(oi.quantity * oi.price), 0) AS total
         FROM order_items oi 
         JOIN orders o ON oi.order_id = o.order_id 
-        WHERE o.user_id = ?;";
-
-    // Prepare the statement
+        WHERE o.user_id = ?";
     $stmt = mysqli_prepare($conn, $query);
     mysqli_stmt_bind_param($stmt, "i", $user_id);
     mysqli_stmt_execute($stmt);
     $result = mysqli_stmt_get_result($stmt);
     $total_spent = mysqli_fetch_assoc($result);
     
-    $recent_orders = mysqli_query($conn, 
-        "SELECT o.*, p.name AS product_name, p.image_url, u.username AS vendor_name 
-         FROM orders o 
-         JOIN order_items oi ON o.order_id = oi.order_id 
-         JOIN products p ON oi.product_id = p.product_id 
-         JOIN users u ON p.vendor_id = u.user_id 
-         WHERE o.user_id = $user_id 
-         ORDER BY o.created_at DESC LIMIT 5");
+    $recent_orders_query = "
+        SELECT o.*, p.name AS product_name, p.image_url, u.username AS vendor_name, oi.quantity 
+        FROM orders o 
+        JOIN order_items oi ON o.order_id = oi.order_id 
+        JOIN products p ON oi.product_id = p.product_id 
+        JOIN users u ON p.vendor_id = u.user_id 
+        WHERE o.user_id = ? 
+        ORDER BY o.created_at DESC LIMIT 5";
+    $recent_orders_stmt = mysqli_prepare($conn, $recent_orders_query);
+    mysqli_stmt_bind_param($recent_orders_stmt, "i", $user_id);
+    mysqli_stmt_execute($recent_orders_stmt);
+    $recent_orders = mysqli_stmt_get_result($recent_orders_stmt);
     
-    $wishlist_items = mysqli_query($conn, 
-        "SELECT p.*, u.name as vendor_name 
-         FROM wishlist w 
-         JOIN products p ON w.product_id = p.product_id 
-         JOIN users u ON p.vendor_id = u.user_id 
-         WHERE w.user_id = $user_id 
-         LIMIT 4");
+    $wishlist_query = "
+        SELECT p.*, u.name as vendor_name 
+        FROM wishlist w 
+        JOIN products p ON w.product_id = p.product_id 
+        JOIN users u ON p.vendor_id = u.user_id 
+        WHERE w.user_id = ? 
+        LIMIT 4";
+    $wishlist_stmt = mysqli_prepare($conn, $wishlist_query);
+    mysqli_stmt_bind_param($wishlist_stmt, "i", $user_id);
+    mysqli_stmt_execute($wishlist_stmt);
+    $wishlist_items = mysqli_stmt_get_result($wishlist_stmt);
 }
 ?>
+
+<!-- The rest of the HTML remains unchanged -->
 <!DOCTYPE html>
 <html>
 <head>
@@ -319,7 +347,7 @@ if ($role === 'vendor') {
                             <div class="order-details">
                                 <div class="order-product"><?php echo htmlspecialchars($order['product_name']); ?></div>
                                 <div class="order-meta">
-                                    <span>Sold by <?php echo htmlspecialchars($order['vendor_name']); ?></span>
+                                    <span>Customer: <?php echo htmlspecialchars($order['customer_name']); ?></span>
                                     <span> • </span>
                                     <span><?php echo date('M d, Y', strtotime($order['created_at'])); ?></span>
                                 </div>

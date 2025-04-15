@@ -19,12 +19,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $price = floatval($_POST['price']);
     $stock = intval($_POST['stock']);
     $category_id = intval($_POST['category_id']);
-    $vendor_id = $_SESSION['user_id'];
+    $user_id = $_SESSION['user_id'];
     
-    // Validate inputs
-    if (empty($name) || empty($description) || $price <= 0 || $stock < 0 || $category_id <= 0) {
-        $error_message = "Please fill all required fields with valid values.";
+    // Fetch the actual vendor_id from the vendors table
+    $vendor_query = "SELECT vendor_id FROM vendors WHERE user_id = ?";
+    $vendor_stmt = mysqli_prepare($conn, $vendor_query);
+    mysqli_stmt_bind_param($vendor_stmt, "i", $user_id);
+    mysqli_stmt_execute($vendor_stmt);
+    $vendor_result = mysqli_stmt_get_result($vendor_stmt);
+
+    if ($vendor_row = mysqli_fetch_assoc($vendor_result)) {
+        $vendor_id = $vendor_row['vendor_id'];
     } else {
+        $error_message = "Vendor profile not found. Please create a vendor profile first.";
+    }
+
+    // Validate inputs
+    if (empty($error_message) && (empty($name) || empty($description) || $price <= 0 || $stock < 0 || $category_id <= 0)) {
+        $error_message = "Please fill all required fields with valid values.";
+    }
+
+    if (empty($error_message)) {
         // Handle image upload
         $image_url = '';
         if (isset($_FILES['image']) && $_FILES['image']['error'] === 0) {
@@ -45,21 +60,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $error_message = "Invalid image format. Allowed formats: JPG, JPEG, PNG, WEBP";
             }
         }
+    }
         
-        if (empty($error_message)) {
-            // Insert product into database
-            $sql = "INSERT INTO products (name, description, price, stock, category_id, vendor_id, image_url, created_at) 
-                    VALUES (?, ?, ?, ?, ?, ?, ?, NOW())";
-            $stmt = mysqli_prepare($conn, $sql);
-            mysqli_stmt_bind_param($stmt, "ssdiiss", $name, $description, $price, $stock, $category_id, $vendor_id, $image_url);
-            
-            if (mysqli_stmt_execute($stmt)) {
-                $success_message = "Product added successfully!";
-                // Clear form
-                $_POST = array();
-            } else {
-                $error_message = "Failed to add product. Please try again.";
-            }
+    if (empty($error_message)) {
+        // Insert product into database
+        $query = "INSERT INTO products (vendor_id, name, description, price, stock, packaging, category_id, image_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
+        $stmt = mysqli_prepare($conn, $query);
+        $packaging = ''; // Since packaging is not provided in the form
+        mysqli_stmt_bind_param($stmt, 'issiiiss', $vendor_id, $name, $description, $price, $stock, $packaging, $category_id, $image_url);
+        
+        if (mysqli_stmt_execute($stmt)) {
+            $success_message = "Product added successfully!";
+            // Clear form
+            $_POST = array();
+        } else {
+            $error_message = "Failed to add product. Please try again.";
         }
     }
 }

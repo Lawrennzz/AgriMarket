@@ -11,29 +11,39 @@ $error_message = '';
 $success_message = '';
 
 // Get cart items
-$cart_query = mysqli_query($conn, "
+$stmt = mysqli_prepare($conn, "
     SELECT c.*, p.name, p.price, p.image_url, p.stock, u.name as vendor_name 
     FROM cart c 
     JOIN products p ON c.product_id = p.product_id 
     JOIN users u ON p.vendor_id = u.user_id 
-    WHERE c.user_id = $user_id
+    WHERE c.user_id = ?
 ");
+mysqli_stmt_bind_param($stmt, "i", $user_id);
+mysqli_stmt_execute($stmt);
+$cart_query = mysqli_stmt_get_result($stmt);
+
+// Debugging: Check query results
+$cart_items = [];
+while ($item = mysqli_fetch_assoc($cart_query)) {
+    $cart_items[] = $item;
+}
+// var_dump($cart_items); // Uncomment to debug
 
 // Calculate totals
 $subtotal = 0;
 $shipping = 10.00; // Fixed shipping rate
-$cart_items = [];
-
-while ($item = mysqli_fetch_assoc($cart_query)) {
+foreach ($cart_items as $item) {
     $subtotal += $item['price'] * $item['quantity'];
-    $cart_items[] = $item;
 }
 
 $tax = $subtotal * 0.10; // 10% tax
 $total = $subtotal + $shipping + $tax;
 
 // Get user details
-$user_query = mysqli_query($conn, "SELECT * FROM users WHERE user_id = $user_id");
+$stmt = mysqli_prepare($conn, "SELECT * FROM users WHERE user_id = ?");
+mysqli_stmt_bind_param($stmt, "i", $user_id);
+mysqli_stmt_execute($stmt);
+$user_query = mysqli_stmt_get_result($stmt);
 $user = mysqli_fetch_assoc($user_query);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -49,36 +59,45 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     
     if (!$stock_error) {
         // Create order
-        $order_sql = "INSERT INTO orders (user_id, total_amount, shipping_address, status, created_at) 
-                      VALUES (?, ?, ?, 'pending', NOW())";
-        $stmt = mysqli_prepare($conn, $order_sql);
+        $status = 'pending';
         $shipping_address = mysqli_real_escape_string($conn, 
             $_POST['street'] . ', ' . 
             $_POST['city'] . ', ' . 
             $_POST['state'] . ' ' . 
             $_POST['zip']
         );
-        mysqli_stmt_bind_param($stmt, "ids", $user_id, $total, $shipping_address);
+        $query = "INSERT INTO orders (user_id, total, status, shipping_address, created_at) VALUES (?, ?, ?, ?, NOW())";
+        $stmt = mysqli_prepare($conn, $query);
+        mysqli_stmt_bind_param($stmt, "idss", $user_id, $total, $status, $shipping_address);
         
         if (mysqli_stmt_execute($stmt)) {
             $order_id = mysqli_insert_id($conn);
             
             // Add order items and update stock
             foreach ($cart_items as $item) {
-                mysqli_query($conn, "
+                $item_stmt = mysqli_prepare($conn, "
                     INSERT INTO order_items (order_id, product_id, quantity, price) 
-                    VALUES ($order_id, {$item['product_id']}, {$item['quantity']}, {$item['price']})
+                    VALUES (?, ?, ?, ?)
                 ");
+                mysqli_stmt_bind_param($item_stmt, "iiid", $order_id, $item['product_id'], $item['quantity'], $item['price']);
+                mysqli_stmt_execute($item_stmt);
+                mysqli_stmt_close($item_stmt);
                 
-                mysqli_query($conn, "
+                $update_stmt = mysqli_prepare($conn, "
                     UPDATE products 
-                    SET stock = stock - {$item['quantity']} 
-                    WHERE product_id = {$item['product_id']}
+                    SET stock = stock - ? 
+                    WHERE product_id = ?
                 ");
+                mysqli_stmt_bind_param($update_stmt, "ii", $item['quantity'], $item['product_id']);
+                mysqli_stmt_execute($update_stmt);
+                mysqli_stmt_close($update_stmt);
             }
             
             // Clear cart
-            mysqli_query($conn, "DELETE FROM cart WHERE user_id = $user_id");
+            $delete_stmt = mysqli_prepare($conn, "DELETE FROM cart WHERE user_id = ?");
+            mysqli_stmt_bind_param($delete_stmt, "i", $user_id);
+            mysqli_stmt_execute($delete_stmt);
+            mysqli_stmt_close($delete_stmt);
             
             // Redirect to order confirmation
             header("Location: order_confirmation.php?order_id=$order_id");
@@ -88,6 +107,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 }
+mysqli_stmt_close($stmt);
 ?>
 <!DOCTYPE html>
 <html>

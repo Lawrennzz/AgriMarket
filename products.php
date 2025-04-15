@@ -1,17 +1,21 @@
 <?php
 include 'config.php';
 
-$category = isset($_GET['category']) ? $_GET['category'] : '';
+$category_id = isset($_GET['category_id']) ? mysqli_real_escape_string($conn, $_GET['category_id']) : '';
 $search = isset($_GET['search']) ? mysqli_real_escape_string($conn, $_GET['search']) : '';
 $sort = isset($_GET['sort']) ? $_GET['sort'] : 'name_asc';
 $view = isset($_GET['view']) ? $_GET['view'] : 'grid';
 
-$sql = "SELECT p.*, username as vendor_name FROM products p 
-        LEFT JOIN users u ON p.vendor_id = u.user_id";
+// Fetch products with category name
+$sql = "SELECT p.*, u.username as vendor_name, c.name as category_name 
+        FROM products p 
+        JOIN vendors v ON p.vendor_id = v.vendor_id 
+        LEFT JOIN users u ON v.user_id = u.user_id 
+        LEFT JOIN categories c ON p.category_id = c.category_id";
 
 $where_conditions = [];
-if ($category) {
-    $where_conditions[] = "category = '$category'";
+if ($category_id) {
+    $where_conditions[] = "p.category_id = '$category_id'";
 }
 if ($search) {
     $where_conditions[] = "(p.name LIKE '%$search%' OR p.description LIKE '%$search%')";
@@ -23,25 +27,25 @@ if (!empty($where_conditions)) {
 
 switch ($sort) {
     case 'price_asc':
-        $sql .= " ORDER BY price ASC";
+        $sql .= " ORDER BY p.price ASC";
         break;
     case 'price_desc':
-        $sql .= " ORDER BY price DESC";
+        $sql .= " ORDER BY p.price DESC";
         break;
     case 'name_desc':
-        $sql .= " ORDER BY name DESC";
+        $sql .= " ORDER BY p.name DESC";
         break;
     default:
-        $sql .= " ORDER BY name ASC";
+        $sql .= " ORDER BY p.name ASC";
 }
 
 $result = mysqli_query($conn, $sql);
 
-// Get all categories for filter
-$categories_query = mysqli_query($conn, "SELECT DISTINCT category FROM products ORDER BY category");
+// Get all categories for filter from categories table
+$categories_query = mysqli_query($conn, "SELECT category_id, name FROM categories ORDER BY name");
 $categories = [];
 while ($cat = mysqli_fetch_assoc($categories_query)) {
-    $categories[] = $cat['category'];
+    $categories[] = $cat;
 }
 
 // Log search analytics
@@ -295,11 +299,11 @@ if ($search) {
                     <i class="fas fa-search"></i>
                     <input type="text" name="search" placeholder="Search products..." value="<?php echo htmlspecialchars($search); ?>">
                 </div>
-                <select name="category" class="form-control">
+                <select name="category_id" class="form-control">
                     <option value="">All Categories</option>
                     <?php foreach ($categories as $cat): ?>
-                        <option value="<?php echo htmlspecialchars($cat); ?>" <?php echo $category === $cat ? 'selected' : ''; ?>>
-                            <?php echo ucfirst(htmlspecialchars($cat)); ?>
+                        <option value="<?php echo htmlspecialchars($cat['category_id']); ?>" <?php echo $category_id === $cat['category_id'] ? 'selected' : ''; ?>>
+                            <?php echo ucfirst(htmlspecialchars($cat['name'])); ?>
                         </option>
                     <?php endforeach; ?>
                 </select>
@@ -335,7 +339,7 @@ if ($search) {
                              alt="<?php echo htmlspecialchars($product['name']); ?>"
                              class="product-image">
                         <div class="product-details">
-                            <div class="product-category"><?php echo htmlspecialchars($product['category']); ?></div>
+                            <div class="product-category"><?php echo htmlspecialchars($product['category_name'] ?? 'Uncategorized'); ?></div>
                             <h3 class="product-title"><?php echo htmlspecialchars($product['name']); ?></h3>
                             <div class="product-vendor">
                                 <i class="fas fa-store"></i> 

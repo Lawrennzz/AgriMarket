@@ -7,11 +7,11 @@ if (!isset($_SESSION['user_id']) || !isset($_GET['id'])) {
 }
 
 $user_id = $_SESSION['user_id'];
-$user_type = $_SESSION['user_type'];
+$role = $_SESSION['role'];
 $order_id = intval($_GET['id']);
 
 // Get order details
-if ($user_type === 'vendor') {
+if ($role === 'vendor') {
     $order_query = mysqli_query($conn, "
         SELECT o.*, u.name as customer_name, u.email as customer_email, u.phone as customer_phone
         FROM orders o
@@ -45,7 +45,7 @@ $items_query = mysqli_query($conn, "
 ");
 
 // Handle status update for vendors
-if ($user_type === 'vendor' && isset($_POST['status'])) {
+if ($role === 'vendor' && isset($_POST['status'])) {
     $new_status = mysqli_real_escape_string($conn, $_POST['status']);
     mysqli_query($conn, "
         UPDATE orders 
@@ -318,7 +318,7 @@ $timeline_query = mysqli_query($conn, "
                     </span>
                 </div>
 
-                <?php if ($user_type === 'vendor'): ?>
+                <?php if ($role === 'vendor'): ?>
                     <div class="customer-info">
                         <h2 class="section-title">Customer Information</h2>
                         <div class="info-row">
@@ -382,7 +382,7 @@ $timeline_query = mysqli_query($conn, "
                 <div class="order-summary">
                     <div class="summary-row">
                         <span>Subtotal</span>
-                        <span>$<?php echo number_format($order['total_amount'] - ($order['total_amount'] * 0.1) - 10, 2); ?></span>
+                        <span>$<?php echo number_format($order['total'] - ($order['total'] * 0.1) - 10, 2); ?></span>
                     </div>
                     <div class="summary-row">
                         <span>Shipping</span>
@@ -390,15 +390,15 @@ $timeline_query = mysqli_query($conn, "
                     </div>
                     <div class="summary-row">
                         <span>Tax (10%)</span>
-                        <span>$<?php echo number_format($order['total_amount'] * 0.1, 2); ?></span>
+                        <span>$<?php echo number_format($order['total'] * 0.1, 2); ?></span>
                     </div>
                     <div class="summary-row total">
                         <span>Total</span>
-                        <span>$<?php echo number_format($order['total_amount'], 2); ?></span>
+                        <span>$<?php echo number_format($order['total'], 2); ?></span>
                     </div>
                 </div>
 
-                <?php if ($user_type === 'vendor' && $order['status'] !== 'delivered' && $order['status'] !== 'cancelled'): ?>
+                <?php if ($role === 'vendor' && $order['status'] !== 'delivered' && $order['status'] !== 'cancelled'): ?>
                     <form method="POST" class="status-form">
                         <h2 class="section-title">Update Status</h2>
                         <select name="status" class="status-select">

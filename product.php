@@ -11,7 +11,8 @@ $product_id = (int)$_GET['id'];
 // Get product details with vendor information
 $sql = "SELECT p.*, u.name as vendor_name, u.email as vendor_email 
         FROM products p 
-        LEFT JOIN users u ON p.vendor_id = u.user_id 
+        JOIN vendors v ON p.vendor_id = v.vendor_id 
+        JOIN users u ON v.user_id = u.user_id 
         WHERE p.product_id = ?";
 $stmt = mysqli_prepare($conn, $sql);
 mysqli_stmt_bind_param($stmt, "i", $product_id);
@@ -56,7 +57,9 @@ if ($total_reviews > 0) {
 }
 
 // Log product view
-mysqli_query($conn, "INSERT INTO analytics (type, product_id, count) VALUES ('view', $product_id, 1)");
+$analytics_stmt = mysqli_prepare($conn, "INSERT INTO analytics (type, product_id, count) VALUES ('view', ?, 1)");
+mysqli_stmt_bind_param($analytics_stmt, "i", $product_id);
+mysqli_stmt_execute($analytics_stmt);
 ?>
 <!DOCTYPE html>
 <html>
@@ -461,4 +464,4 @@ mysqli_query($conn, "INSERT INTO analytics (type, product_id, count) VALUES ('vi
     }
     </script>
 </body>
-</html> 
+</html>

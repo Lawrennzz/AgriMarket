@@ -25,7 +25,6 @@ CREATE TABLE products (
     product_id INT AUTO_INCREMENT PRIMARY KEY,
     vendor_id INT,
     name VARCHAR(100) NOT NULL,
-    category ENUM('livestock', 'crops', 'forestry', 'dairy', 'fish', 'misc') NOT NULL,
     description TEXT,
     price DECIMAL(10,2) NOT NULL,
     stock INT NOT NULL,
@@ -89,17 +88,6 @@ CREATE TABLE analytics (
 -- Update products table to add featured column 
 ALTER TABLE products ADD COLUMN featured TINYINT(1) DEFAULT 0;
 
--- Order items
-CREATE TABLE order_items (
-       item_id INT AUTO_INCREMENT PRIMARY KEY,
-       order_id INT,
-       product_id INT,
-       quantity INT NOT NULL,
-       price DECIMAL(10,2) NOT NULL,
-       FOREIGN KEY (order_id) REFERENCES orders(order_id),
-       FOREIGN KEY (product_id) REFERENCES products(product_id)
-   );
-
 -- Add image_url column to products table
 ALTER TABLE products ADD COLUMN image_url VARCHAR(255);
 
@@ -134,3 +122,41 @@ INSERT INTO categories (name, description) VALUES
 ('Dairy', 'Milk products'),
 ('Fish Farming', 'Aquaculture products'),
 ('Miscellaneous', 'Honey, etc.');
+
+-- Cart
+CREATE TABLE cart (
+       cart_id INT AUTO_INCREMENT PRIMARY KEY,
+       user_id INT,
+       product_id INT,
+       quantity INT NOT NULL,
+       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+       FOREIGN KEY (user_id) REFERENCES users(user_id),
+       FOREIGN KEY (product_id) REFERENCES products(product_id)
+   );
+
+-- Add shipping_address column to orders table
+ALTER TABLE orders ADD shipping_address VARCHAR(255) NOT NULL;
+
+-- Order status history
+CREATE TABLE order_status_history (
+       history_id INT AUTO_INCREMENT PRIMARY KEY,
+       order_id INT,
+       status ENUM('pending', 'processing', 'shipped', 'delivered', 'cancelled') NOT NULL,
+       changed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+       FOREIGN KEY (order_id) REFERENCES orders(order_id)
+   );
+
+-- Add created_at column to order_status_history table
+ALTER TABLE order_status_history ADD created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+
+-- Add category_id column to products table
+ALTER TABLE products ADD category_id INT;
+
+-- Add created_at column to products table
+ALTER TABLE products ADD created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+
+-- Add updated_at column to products table
+ALTER TABLE products ADD updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+
+-- Add foreign key constraint to products table
+ALTER TABLE products ADD CONSTRAINT fk_product_category FOREIGN KEY (category_id) REFERENCES categories(category_id);

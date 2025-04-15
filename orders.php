@@ -9,6 +9,9 @@ if (!isset($_SESSION['user_id'])) {
 $user_id = $_SESSION['user_id'];
 $role = $_SESSION['role'];
 
+// Debugging session variables (uncomment to test)
+// var_dump($_SESSION['user_id'], $_SESSION['role']);
+
 // Get filter parameters
 $status = isset($_GET['status']) ? $_GET['status'] : 'all';
 $sort = isset($_GET['sort']) ? $_GET['sort'] : 'newest';
@@ -16,17 +19,17 @@ $page = isset($_GET['page']) ? max(1, intval($_GET['page'])) : 1;
 $per_page = 10;
 $offset = ($page - 1) * $per_page;
 
-// Build query based on user type
+// Build base query for orders based on user type
 if ($role === 'vendor') {
     $base_query = "
         SELECT o.*, u.name as customer_name, u.email as customer_email,
                COUNT(oi.item_id) as items_count,
                GROUP_CONCAT(DISTINCT p.name SEPARATOR ', ') as product_names
         FROM orders o
-        JOIN users u ON o.user_id = u.user_id
-        JOIN order_items oi ON o.order_id = oi.order_id
-        JOIN products p ON oi.product_id = p.product_id
-        WHERE p.vendor_id = $user_id
+        JOIN users u ON u.user_id = o.user_id
+        JOIN order_items oi ON oi.order_id = o.order_id
+        JOIN products p ON p.product_id = oi.product_id
+        WHERE p.vendor_id = ?
     ";
 } else {
     $base_query = "
@@ -34,44 +37,89 @@ if ($role === 'vendor') {
                COUNT(oi.item_id) as items_count,
                GROUP_CONCAT(DISTINCT p.name SEPARATOR ', ') as product_names
         FROM orders o
-        JOIN order_items oi ON o.order_id = oi.order_id
-        JOIN products p ON oi.product_id = p.product_id
-        WHERE o.user_id = $user_id
+        JOIN order_items oi ON oi.order_id = o.order_id
+        JOIN products p ON p.product_id = oi.product_id
+        WHERE o.user_id = ?
     ";
 }
 
-// Add status filter
+// Build count query
+if ($role === 'vendor') {
+    $count_query = "
+        SELECT COUNT(DISTINCT o.order_id) as total
+        FROM orders o
+        JOIN order_items oi ON oi.order_id = o.order_id
+        JOIN products p ON p.product_id = oi.product_id
+        WHERE p.vendor_id = ?
+    ";
+} else {
+    $count_query = "
+        SELECT COUNT(DISTINCT o.order_id) as total
+        FROM orders o
+        JOIN order_items oi ON oi.order_id = o.order_id
+        JOIN products p ON p.product_id = oi.product_id
+        WHERE o.user_id = ?
+    ";
+}
+
+// Add status filter to both queries
+$bindings = [$user_id];
+$types = 'i'; // For user_id
 if ($status !== 'all') {
-    $status = mysqli_real_escape_string($conn, $status);
-    $base_query .= " AND o.status = '$status'";
+    $base_query .= " AND o.status = ?";
+    $count_query .= " AND o.status = ?";
+    $bindings[] = $status;
+    $types .= 's'; // For status
 }
 
 $base_query .= " GROUP BY o.order_id";
 
-// Add sorting
+// Add sorting to base query
 switch ($sort) {
     case 'oldest':
         $base_query .= " ORDER BY o.created_at ASC";
         break;
     case 'highest':
-        $base_query .= " ORDER BY o.total_amount DESC";
+        $base_query .= " ORDER BY o.total DESC";
         break;
     case 'lowest':
-        $base_query .= " ORDER BY o.total_amount ASC";
+        $base_query .= " ORDER BY o.total ASC";
         break;
     default: // newest
         $base_query .= " ORDER BY o.created_at DESC";
 }
 
-// Get total count for pagination
-$count_query = "SELECT COUNT(DISTINCT o.order_id) as total FROM (" . $base_query . ") as subquery";
-$total_orders = mysqli_fetch_assoc(mysqli_query($conn, $count_query))['total'];
+// Execute count query
+$stmt = mysqli_prepare($conn, $count_query);
+if ($stmt === false) {
+    die("Count prepare failed: " . mysqli_error($conn));
+}
+mysqli_stmt_bind_param($stmt, $types, ...$bindings);
+mysqli_stmt_execute($stmt);
+$result = mysqli_stmt_get_result($stmt);
+$total_orders = mysqli_fetch_assoc($result)['total'] ?? 0;
+mysqli_stmt_close($stmt);
+
 $total_pages = ceil($total_orders / $per_page);
 
 // Get orders for current page
-$orders_query = $base_query . " LIMIT $offset, $per_page";
-$orders = mysqli_query($conn, $orders_query);
+$orders_query = $base_query . " LIMIT ?, ?";
+$stmt = mysqli_prepare($conn, $orders_query);
+if ($stmt === false) {
+    die("Orders prepare failed: " . mysqli_error($conn));
+}
+$bindings[] = $offset;
+$bindings[] = $per_page;
+$types .= 'ii'; // For offset and per_page
+mysqli_stmt_bind_param($stmt, $types, ...$bindings);
+mysqli_stmt_execute($stmt);
+$orders = mysqli_stmt_get_result($stmt);
+
+// Debugging query results (uncomment to test)
+// $rows = mysqli_fetch_all($orders, MYSQLI_ASSOC);
+// var_dump($rows);
 ?>
+
 <!DOCTYPE html>
 <html>
 <head>
@@ -223,6 +271,12 @@ $orders = mysqli_query($conn, $orders_query);
             background: var(--primary-dark);
         }
 
+        .no-orders {
+            text-align: center;
+            padding: 2rem;
+            color: var(--medium-gray);
+        }
+
         @media (max-width: 992px) {
             .orders-container {
                 margin: 1rem;
@@ -269,7 +323,6 @@ $orders = mysqli_query($conn, $orders_query);
                         <option value="processing" <?php echo $status === 'processing' ? 'selected' : ''; ?>>Processing</option>
                         <option value="shipped" <?php echo $status === 'shipped' ? 'selected' : ''; ?>>Shipped</option>
                         <option value="delivered" <?php echo $status === 'delivered' ? 'selected' : ''; ?>>Delivered</option>
-                        <option value="cancelled" <?php echo $status === 'cancelled' ? 'selected' : ''; ?>>Cancelled</option>
                     </select>
 
                     <select class="filter-select" onchange="updateFilters('sort', this.value)">
@@ -281,77 +334,83 @@ $orders = mysqli_query($conn, $orders_query);
                 </div>
             </div>
 
-            <table class="orders-table">
-                <thead>
-                    <tr>
-                        <th>Order ID</th>
-                        <?php if ($role === 'vendor'): ?>
-                            <th>Customer</th>
-                        <?php endif; ?>
-                        <th>Products</th>
-                        <th>Total</th>
-                        <th>Date</th>
-                        <th>Status</th>
-                        <th>Action</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php while ($order = mysqli_fetch_assoc($orders)): ?>
+            <?php if (mysqli_num_rows($orders) > 0): ?>
+                <table class="orders-table">
+                    <thead>
                         <tr>
-                            <td class="order-id">#<?php echo str_pad($order['order_id'], 8, '0', STR_PAD_LEFT); ?></td>
+                            <th>Order ID</th>
                             <?php if ($role === 'vendor'): ?>
-                                <td>
-                                    <div><?php echo htmlspecialchars($order['customer_name']); ?></div>
-                                    <div class="order-products"><?php echo htmlspecialchars($order['customer_email']); ?></div>
-                                </td>
+                                <th>Customer</th>
                             <?php endif; ?>
-                            <td>
-                                <div class="order-products">
-                                    <?php echo htmlspecialchars($order['product_names']); ?>
-                                </div>
-                            </td>
-                            <td>$<?php echo number_format($order['total_amount'], 2); ?></td>
-                            <td><?php echo date('M j, Y', strtotime($order['created_at'])); ?></td>
-                            <td>
-                                <span class="order-status status-<?php echo strtolower($order['status']); ?>">
-                                    <?php echo ucfirst($order['status']); ?>
-                                </span>
-                            </td>
-                            <td>
-                                <a href="order_details.php?id=<?php echo $order['order_id']; ?>" class="btn-view">
-                                    View Details
-                                </a>
-                            </td>
+                            <th>Products</th>
+                            <th>Total</th>
+                            <th>Date</th>
+                            <th>Status</th>
+                            <th>Action</th>
                         </tr>
-                    <?php endwhile; ?>
-                </tbody>
-            </table>
+                    </thead>
+                    <tbody>
+                        <?php while ($order = mysqli_fetch_assoc($orders)): ?>
+                            <tr>
+                                <td class="order-id">#<?php echo str_pad($order['order_id'], 8, '0', STR_PAD_LEFT); ?></td>
+                                <?php if ($role === 'vendor'): ?>
+                                    <td>
+                                        <div><?php echo htmlspecialchars($order['customer_name'] ?? 'Unknown'); ?></div>
+                                        <div class="order-products"><?php echo htmlspecialchars($order['customer_email'] ?? 'N/A'); ?></div>
+                                    </td>
+                                <?php endif; ?>
+                                <td>
+                                    <div class="order-products">
+                                        <?php echo htmlspecialchars($order['product_names'] ?? 'None'); ?>
+                                    </div>
+                                </td>
+                                <td>$<?php echo number_format($order['total'] ?? 0, 2); ?></td>
+                                <td><?php echo date('M j, Y', strtotime($order['created_at'])); ?></td>
+                                <td>
+                                    <span class="order-status status-<?php echo strtolower($order['status']); ?>">
+                                        <?php echo ucfirst($order['status']); ?>
+                                    </span>
+                                </td>
+                                <td>
+                                    <a href="order_details.php?id=<?php echo $order['order_id']; ?>" class="btn-view">
+                                        View Details
+                                    </a>
+                                </td>
+                            </tr>
+                        <?php endwhile; ?>
+                    </tbody>
+                </table>
+            <?php else: ?>
+                <div class="no-orders">
+                    No orders found.
+                </div>
+            <?php endif; ?>
 
             <?php if ($total_pages > 1): ?>
                 <div class="pagination">
-                    <a href="?page=1&status=<?php echo $status; ?>&sort=<?php echo $sort; ?>" 
+                    <a href="?page=1&status=<?php echo htmlspecialchars($status); ?>&sort=<?php echo htmlspecialchars($sort); ?>" 
                        class="page-link <?php echo $page <= 1 ? 'disabled' : ''; ?>">
                         <i class="fas fa-angle-double-left"></i>
                     </a>
                     
-                    <a href="?page=<?php echo max(1, $page - 1); ?>&status=<?php echo $status; ?>&sort=<?php echo $sort; ?>" 
+                    <a href="?page=<?php echo max(1, $page - 1); ?>&status=<?php echo htmlspecialchars($status); ?>&sort=<?php echo htmlspecialchars($sort); ?>" 
                        class="page-link <?php echo $page <= 1 ? 'disabled' : ''; ?>">
                         <i class="fas fa-angle-left"></i>
                     </a>
 
                     <?php for ($i = max(1, $page - 2); $i <= min($total_pages, $page + 2); $i++): ?>
-                        <a href="?page=<?php echo $i; ?>&status=<?php echo $status; ?>&sort=<?php echo $sort; ?>" 
+                        <a href="?page=<?php echo $i; ?>&status=<?php echo htmlspecialchars($status); ?>&sort=<?php echo htmlspecialchars($sort); ?>" 
                            class="page-link <?php echo $page === $i ? 'active' : ''; ?>">
                             <?php echo $i; ?>
                         </a>
                     <?php endfor; ?>
 
-                    <a href="?page=<?php echo min($total_pages, $page + 1); ?>&status=<?php echo $status; ?>&sort=<?php echo $sort; ?>" 
+                    <a href="?page=<?php echo min($total_pages, $page + 1); ?>&status=<?php echo htmlspecialchars($status); ?>&sort=<?php echo htmlspecialchars($sort); ?>" 
                        class="page-link <?php echo $page >= $total_pages ? 'disabled' : ''; ?>">
                         <i class="fas fa-angle-right"></i>
                     </a>
 
-                    <a href="?page=<?php echo $total_pages; ?>&status=<?php echo $status; ?>&sort=<?php echo $sort; ?>" 
+                    <a href="?page=<?php echo $total_pages; ?>&status=<?php echo htmlspecialchars($status); ?>&sort=<?php echo htmlspecialchars($sort); ?>" 
                        class="page-link <?php echo $page >= $total_pages ? 'disabled' : ''; ?>">
                         <i class="fas fa-angle-double-right"></i>
                     </a>
@@ -361,6 +420,7 @@ $orders = mysqli_query($conn, $orders_query);
     </div>
 
     <?php include 'footer.php'; ?>
+    <?php mysqli_stmt_close($stmt); ?>
 
     <script>
         function updateFilters(type, value) {
