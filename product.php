@@ -1,5 +1,16 @@
 <?php
+// Check if session is already started
+if (session_status() === PHP_SESSION_NONE) {
+    session_start(); // Start the session only if it hasn't been started
+}
+
 include 'config.php';
+
+if (!isset($_SESSION['user_id'])) {
+    $user_id = null; // Set user_id to null if not logged in
+} else {
+    $user_id = $_SESSION['user_id']; // Get user ID from session
+}
 
 if (!isset($_GET['id'])) {
     header("Location: products.php");
@@ -9,7 +20,7 @@ if (!isset($_GET['id'])) {
 $product_id = (int)$_GET['id'];
 
 // Get product details with vendor and category information
-$sql = "SELECT p.*, u.name as vendor_name, u.email as vendor_email, c.name as category_name 
+$sql = "SELECT p.*, u.name as vendor_name, u.email as vendor_email, c.name as category_name, v.user_id as vendor_user_id 
         FROM products p 
         JOIN vendors v ON p.vendor_id = v.vendor_id 
         JOIN users u ON v.user_id = u.user_id 
@@ -340,25 +351,17 @@ mysqli_stmt_execute($analytics_stmt);
                     <?php endif; ?>
                 </div>
 
-                <?php if ($product['stock'] > 0): ?>
-                    <div class="quantity-control">
-                        <button class="quantity-btn" onclick="updateQuantity(-1)">
-                            <i class="fas fa-minus"></i>
+                <div class="product-actions">
+                    <?php if (isset($product['vendor_user_id']) && $product['vendor_user_id'] == $user_id): ?>
+                        <a href="edit_delete_product.php?id=<?php echo $product['product_id']; ?>" class="btn btn-primary">Edit</a>
+                    <?php elseif (isset($role) && $role !== 'vendor'): // Only show Add to Cart for non-vendors ?>
+                        <button onclick="addToCart(<?php echo $product['product_id']; ?>)" class="add-to-cart">
+                            <i class="fas fa-shopping-cart"></i> Add to Cart
                         </button>
-                        <span class="quantity">1</span>
-                        <button class="quantity-btn" onclick="updateQuantity(1)">
-                            <i class="fas fa-plus"></i>
-                        </button>
-                    </div>
-
-                    <button onclick="addToCart(<?php echo $product['product_id']; ?>)" class="btn btn-primary add-to-cart-btn">
-                        <i class="fas fa-shopping-cart"></i> Add to Cart
-                    </button>
-                <?php else: ?>
-                    <button disabled class="btn add-to-cart-btn" style="background: var(--light-gray);">
-                        <i class="fas fa-shopping-cart"></i> Out of Stock
-                    </button>
-                <?php endif; ?>
+                    <?php endif; ?>
+                    <a href="product.php?id=<?php echo $product['product_id']; ?>" class="view-details">
+                    </a>
+                </div>
 
                 <div class="vendor-info">
                     <h3>Seller Information</h3>

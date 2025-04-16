@@ -10,8 +10,17 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin' || !isset($_SE
 $_SESSION['last_activity'] = time();
 
 // Fetch vendors
-$vendors_query = "SELECT vendor_id, vendor_name, user_id, created_at FROM vendors WHERE deleted_at IS NULL ORDER BY created_at DESC";
+$vendors_query = "SELECT v.vendor_id, u.name AS vendor_name, v.user_id, v.created_at 
+                  FROM vendors v 
+                  JOIN users u ON v.user_id = u.user_id 
+                  WHERE v.deleted_at IS NULL 
+                  ORDER BY v.created_at DESC";
 $vendors_stmt = mysqli_prepare($conn, $vendors_query);
+
+if ($vendors_stmt === false) {
+    die('MySQL prepare error: ' . mysqli_error($conn));
+}
+
 mysqli_stmt_execute($vendors_stmt);
 $vendors_result = mysqli_stmt_get_result($vendors_stmt);
 

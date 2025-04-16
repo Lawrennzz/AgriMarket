@@ -1,22 +1,27 @@
 <?php
+session_start();
+
 include 'config.php';
 
-if (!isset($_SESSION['user_id'])) {
+if (!isset($_SESSION['user_id']) || !isset($_SESSION['last_activity']) || (time() - $_SESSION['last_activity']) > 3600) {
+    session_unset();
+    session_destroy();
     header("Location: login.php");
     exit();
 }
+$_SESSION['last_activity'] = time();
 
 // Get user information
-$user_id = $_SESSION['user_id'];
-$role = $_SESSION['role'];
+$user_id = isset($_SESSION['user_id']) ? $_SESSION['user_id'] : null;
+$role = isset($_SESSION['role']) ? $_SESSION['role'] : null;
 
 $category_id = isset($_GET['category_id']) ? mysqli_real_escape_string($conn, $_GET['category_id']) : '';
 $search = isset($_GET['search']) ? mysqli_real_escape_string($conn, $_GET['search']) : '';
 $sort = isset($_GET['sort']) ? $_GET['sort'] : 'name_asc';
 $view = isset($_GET['view']) ? $_GET['view'] : 'grid';
 
-// Fetch products with category name
-$sql = "SELECT p.*, u.username as vendor_name, c.name as category_name 
+// Fetch products with category name and vendor user_id
+$sql = "SELECT p.*, u.username as vendor_name, c.name as category_name, v.user_id as vendor_user_id 
         FROM products p 
         JOIN vendors v ON p.vendor_id = v.vendor_id 
         LEFT JOIN users u ON v.user_id = u.user_id 
@@ -365,9 +370,9 @@ if ($search) {
                                 <?php endif; ?>
                             </div>
                             <div class="product-actions">
-                                <?php if ($role === 'vendor'): ?>
+                                <?php if ($product['vendor_user_id'] == $user_id): ?>
                                     <a href="edit_delete_product.php?id=<?php echo $product['product_id']; ?>" class="btn btn-primary">Edit</a>
-                                <?php else: ?>
+                                <?php elseif ($role !== 'vendor'): // Only show Add to Cart for non-vendors ?>
                                     <button onclick="addToCart(<?php echo $product['product_id']; ?>)" class="add-to-cart">
                                         <i class="fas fa-shopping-cart"></i> Add to Cart
                                     </button>

@@ -10,8 +10,18 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin' || !isset($_SE
 $_SESSION['last_activity'] = time();
 
 // Fetch orders
-$orders_query = "SELECT o.order_id, u.name AS customer_name, o.total_amount, o.status, o.created_at FROM orders o JOIN users u ON o.user_id = u.user_id WHERE o.deleted_at IS NULL ORDER BY o.created_at DESC";
+$orders_query = "SELECT o.order_id, u.name AS customer_name, o.total, o.status, o.created_at 
+                 FROM orders o 
+                 JOIN users u ON o.user_id = u.user_id 
+                 WHERE o.deleted_at IS NULL 
+                 ORDER BY o.created_at DESC";
+
 $orders_stmt = mysqli_prepare($conn, $orders_query);
+
+if ($orders_stmt === false) {
+    die('MySQL prepare error: ' . mysqli_error($conn));
+}
+
 mysqli_stmt_execute($orders_stmt);
 $orders_result = mysqli_stmt_get_result($orders_stmt);
 
@@ -157,7 +167,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['delete_order'])) {
                     <tr>
                         <td><?php echo htmlspecialchars($order['order_id']); ?></td>
                         <td><?php echo htmlspecialchars($order['customer_name']); ?></td>
-                        <td><?php echo htmlspecialchars($order['total_amount']); ?></td>
+                        <td><?php echo htmlspecialchars($order['total']); ?></td>
                         <td><?php echo htmlspecialchars($order['status']); ?></td>
                         <td><?php echo htmlspecialchars($order['created_at'], ENT_QUOTES, 'UTF-8'); ?></td>
                         <td>
