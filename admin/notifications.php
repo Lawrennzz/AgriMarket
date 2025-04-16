@@ -87,7 +87,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['send_notification']))
                     
                     // Send to each recipient individually
                     foreach ($recipients as $recipient) {
-                        if ($mailer->sendPromotionEmail($recipient['email'], $recipient['name'], $subject, $message)) {
+                        // Format email content as a promotion
+                        $promotion = [
+                            [
+                                'title' => $subject,
+                                'description' => $message,
+                                'link' => isset($_SERVER['HTTP_HOST']) ? 'http://' . $_SERVER['HTTP_HOST'] : '#'
+                            ]
+                        ];
+                        
+                        if ($mailer->sendPromotionEmail($recipient['email'], $subject, $promotion)) {
                             $email_sent = true;
                             
                             // Insert notification into database

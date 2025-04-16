@@ -1,562 +1,621 @@
 <?php
 /**
  * Mailer Class for AgriMarket
- * 
- * Handles email sending functionality
+ * Handles email sending functionality using PHPMailer
  */
 
-// Include required files
-require_once __DIR__ . '/../includes/config.php';
-require_once __DIR__ . '/../includes/functions.php';
-
-// Define a function to check if PHPMailer is available
-function is_phpmailer_available() {
-    static $available = null;
-    
-    if ($available === null) {
-        // Try vendor autoload first (composer installation)
-        if (file_exists(__DIR__ . '/../vendor/autoload.php')) {
-            require_once __DIR__ . '/../vendor/autoload.php';
-        }
-        // Try manual inclusion if vendor autoload not found
-        elseif (file_exists(__DIR__ . '/../PHPMailer/src/PHPMailer.php')) {
-            require_once __DIR__ . '/../PHPMailer/src/PHPMailer.php';
-            require_once __DIR__ . '/../PHPMailer/src/SMTP.php';
-            require_once __DIR__ . '/../PHPMailer/src/Exception.php';
-        }
-        
-        // Check if the PHPMailer class exists
-        $available = class_exists('PHPMailer\PHPMailer\PHPMailer');
-    }
-    
-    return $available;
-}
-
-/**
- * Mailer class for sending emails
- */
 class Mailer {
-    // SMTP settings
-    private $host;
-    private $port;
-    private $username;
-    private $password;
-    private $encryption; // ssl or tls
-    
-    // Sender info
-    private $fromEmail;
-    private $fromName;
-    
     // Database connection
     private $conn;
     
-    // Use SMTP flag
+    // Email settings
+    private $fromEmail;
+    private $fromName;
+    private $replyToEmail;
+    private $replyToName;
+    
+    // SMTP settings
     private $useSmtp = false;
+    private $smtpHost;
+    private $smtpPort;
+    private $smtpUsername;
+    private $smtpPassword;
+    private $smtpSecure; // tls, ssl, or ''
     
-    // Debug mode
+    // Debug and development mode
     private $debugMode = false;
-    
-    // Development mode (logs emails instead of sending)
     private $devMode = false;
     
-    // Last error message
+    // Error message
     private $lastError = '';
     
     /**
      * Constructor
      * 
-     * @param bool $debugMode Enable debug mode
-     * @param bool $devMode Enable development mode (logs emails instead of sending)
+     * @param bool $debugMode Enable debug mode for verbose output
+     * @param bool $devMode Enable development mode (log emails instead of sending)
      */
     public function __construct($debugMode = false, $devMode = false) {
+        // Load database connection
+        require_once __DIR__ . '/../includes/config.php';
+        require_once __DIR__ . '/../includes/functions.php';
         $this->conn = getConnection();
+        
+        // Set modes
         $this->debugMode = $debugMode;
         $this->devMode = $devMode;
-        $this->loadEmailSettings();
+        
+        // Load settings
+        $this->loadSettings();
+    }
+    
+    /**
+     * Load email settings from database
+     */
+    private function loadSettings() {
+        // Default settings
+        $defaults = [
+            'email_from' => 'noreply@agrimarket.com',
+            'email_from_name' => 'AgriMarket',
+            'email_reply_to' => '',
+            'email_reply_to_name' => '',
+            'email_use_smtp' => '0',
+            'email_smtp_host' => '',
+            'email_smtp_port' => '587',
+            'email_smtp_username' => '',
+            'email_smtp_password' => '',
+            'email_smtp_secure' => 'tls'
+        ];
+        
+        // Query to get settings
+        $query = "SELECT name, value FROM settings WHERE name LIKE 'email_%'";
+        $result = mysqli_query($this->conn, $query);
+        
+        // Initialize settings with defaults
+        $settings = $defaults;
+        
+        // Update with values from database
+        if ($result && mysqli_num_rows($result) > 0) {
+            while ($row = mysqli_fetch_assoc($result)) {
+                $settings[$row['name']] = $row['value'];
+            }
+        }
+        
+        // Set class properties
+        $this->fromEmail = $settings['email_from'];
+        $this->fromName = $settings['email_from_name'];
+        $this->replyToEmail = !empty($settings['email_reply_to']) ? $settings['email_reply_to'] : $settings['email_from'];
+        $this->replyToName = !empty($settings['email_reply_to_name']) ? $settings['email_reply_to_name'] : $settings['email_from_name'];
+        
+        // SMTP settings
+        $this->useSmtp = ($settings['email_use_smtp'] === '1');
+        $this->smtpHost = $settings['email_smtp_host'];
+        $this->smtpPort = (int)$settings['email_smtp_port'];
+        $this->smtpUsername = $settings['email_smtp_username'];
+        $this->smtpPassword = $settings['email_smtp_password'];
+        $this->smtpSecure = $settings['email_smtp_secure'];
+        
+        // Log settings if in debug mode
+        if ($this->debugMode) {
+            $logSettings = $settings;
+            $logSettings['email_smtp_password'] = !empty($logSettings['email_smtp_password']) ? '******' : 'not set';
+            error_log('Email settings loaded: ' . print_r($logSettings, true));
+        }
     }
     
     /**
      * Get the last error message
      * 
-     * @return string Last error message
+     * @return string The last error message
      */
     public function getLastError() {
         return $this->lastError;
     }
     
     /**
-     * Set debug mode
+     * Send an email using PHPMailer
      * 
-     * @param bool $debug Enable debug mode
-     */
-    public function setDebugMode($debug) {
-        $this->debugMode = (bool)$debug;
-    }
-    
-    /**
-     * Set development mode
-     * 
-     * @param bool $devMode Enable development mode
-     */
-    public function setDevMode($devMode) {
-        $this->devMode = (bool)$devMode;
-    }
-    
-    /**
-     * Load email settings from database
-     */
-    private function loadEmailSettings() {
-        // Check which column name is used in the settings table
-        $query = "SHOW COLUMNS FROM settings LIKE 'setting_key'";
-        $result = mysqli_query($this->conn, $query);
-        
-        if (mysqli_num_rows($result) > 0) {
-            // Table has setting_key column
-            $query = "SELECT setting_key, setting_value FROM settings WHERE setting_key LIKE 'email_%'";
-            $key_column = 'setting_key';
-        } else {
-            // Table probably has name column instead
-            $query = "SELECT name, value FROM settings WHERE name LIKE 'email_%'";
-            $key_column = 'name';
-        }
-        
-        $result = mysqli_query($this->conn, $query);
-        
-        // Default values
-        $this->fromEmail = 'info@agrimarket.com';
-        $this->fromName = 'AgriMarket';
-        $this->useSmtp = false;
-        
-        if ($result && mysqli_num_rows($result) > 0) {
-            while ($row = mysqli_fetch_assoc($result)) {
-                $key = str_replace('email_', '', $row[$key_column]);
-                $value = $row[$key_column === 'setting_key' ? 'setting_value' : 'value'];
-                
-                switch ($key) {
-                    case 'smtp_host':
-                        $this->host = $value;
-                        break;
-                    case 'smtp_port':
-                        $this->port = $value;
-                        break;
-                    case 'smtp_username':
-                        $this->username = $value;
-                        break;
-                    case 'smtp_password':
-                        $this->password = $value;
-                        break;
-                    case 'smtp_encryption':
-                    case 'smtp_secure':
-                        $this->encryption = $value;
-                        break;
-                    case 'from_email':
-                    case 'from':
-                        $this->fromEmail = $value;
-                        break;
-                    case 'from_name':
-                        $this->fromName = $value;
-                        break;
-                    case 'use_smtp':
-                        $this->useSmtp = ($value === '1' || $value === 'true');
-                        break;
-                }
-            }
-        }
-        
-        if ($this->debugMode) {
-            error_log("Email settings loaded: " . json_encode([
-                'fromEmail' => $this->fromEmail,
-                'fromName' => $this->fromName,
-                'useSmtp' => $this->useSmtp,
-                'host' => $this->host,
-                'port' => $this->port,
-                'encryption' => $this->encryption
-            ]));
-        }
-    }
-    
-    /**
-     * Send an email
-     * 
-     * @param string $to Recipient email
+     * @param string|array $to Recipient email address(es)
      * @param string $subject Email subject
-     * @param string $message Email message (HTML)
-     * @param string $plainTextMessage Plain text version (optional)
-     * @param array $attachments Array of attachments (optional)
+     * @param string $htmlBody HTML body of the email
+     * @param string $textBody Plain text body (optional)
+     * @param array $attachments Array of file paths to attach (optional)
+     * @param array $cc Array of CC addresses (optional)
+     * @param array $bcc Array of BCC addresses (optional)
      * @return bool Success or failure
      */
-    public function sendEmail($to, $subject, $message, $plainTextMessage = '', $attachments = []) {
+    public function sendEmail($to, $subject, $htmlBody, $textBody = '', $attachments = [], $cc = [], $bcc = []) {
         // Reset last error
         $this->lastError = '';
         
-        // Validate email format
-        if (!filter_var($to, FILTER_VALIDATE_EMAIL)) {
-            $this->lastError = "Invalid email format: $to";
-            error_log($this->lastError);
+        // Validate required parameters
+        if (empty($to)) {
+            $this->lastError = 'Recipient email is required';
             return false;
         }
         
-        // If in development mode, just log the email
-        if ($this->devMode) {
-            $logFile = __DIR__ . '/../logs/email_' . date('Y-m-d_H-i-s') . '_' . uniqid() . '.html';
-            
-            // Create logs directory if it doesn't exist
-            if (!file_exists(__DIR__ . '/../logs')) {
-                mkdir(__DIR__ . '/../logs', 0755, true);
-            }
-            
-            // Log email details
-            $emailLog = "To: $to\n";
-            $emailLog .= "Subject: $subject\n";
-            $emailLog .= "From: {$this->fromName} <{$this->fromEmail}>\n";
-            $emailLog .= "Date: " . date('Y-m-d H:i:s') . "\n\n";
-            $emailLog .= "HTML Content:\n$message\n\n";
-            
-            if (!empty($plainTextMessage)) {
-                $emailLog .= "Plain Text Content:\n$plainTextMessage\n\n";
-            }
-            
-            if (!empty($attachments) && is_array($attachments)) {
-                $emailLog .= "Attachments:\n";
-                foreach ($attachments as $attachment) {
-                    $emailLog .= "- $attachment\n";
-                }
-            }
-            
-            // Write to log file
-            file_put_contents($logFile, $emailLog);
-            error_log("Email logged to file: $logFile (DEV MODE)");
-            
-            return true; // Return success in dev mode
+        if (empty($subject)) {
+            $this->lastError = 'Email subject is required';
+            return false;
         }
         
-        // If SMTP is enabled and PHPMailer is available
-        if ($this->useSmtp && is_phpmailer_available()) {
-            try {
-                // Use the fully qualified class name to avoid namespace issues
-                $phpmailerClass = 'PHPMailer\PHPMailer\PHPMailer';
-                $mail = new $phpmailerClass(true);
-                
-                // Enable verbose debug output if in debug mode
-                if ($this->debugMode) {
-                    $mail->SMTPDebug = 2; // 2 = client and server
-                    $mail->Debugoutput = function($str, $level) {
-                        error_log("PHPMailer Debug [$level]: $str");
-                    };
-                }
-                
-                // Server settings
+        if (empty($htmlBody)) {
+            $this->lastError = 'Email body is required';
+            return false;
+        }
+        
+        // For development mode, just log the email
+        if ($this->devMode) {
+            return $this->logEmail($to, $subject, $htmlBody, $textBody, $attachments, $cc, $bcc);
+        }
+        
+        // Check if PHPMailer is available
+        if (!$this->isPHPMailerAvailable()) {
+            // Fall back to PHP mail() function
+            return $this->sendWithPHPMail($to, $subject, $htmlBody);
+        }
+        
+        try {
+            // Create PHPMailer instance
+            if (!class_exists('PHPMailer\PHPMailer\PHPMailer')) {
+                throw new Exception("PHPMailer class not found");
+            }
+            
+            // Use string for class name to avoid undefined class errors in static analysis
+            $phpmailerClass = 'PHPMailer\PHPMailer\PHPMailer';
+            $mail = new $phpmailerClass(true);
+            
+            // Debug settings
+            if ($this->debugMode) {
+                $mail->SMTPDebug = 2; // 2 = client and server messages
+                $mail->Debugoutput = function($str, $level) {
+                    error_log("PHPMailer [$level]: $str");
+                };
+            }
+            
+            // Use SMTP if configured
+            if ($this->useSmtp && !empty($this->smtpHost)) {
                 $mail->isSMTP();
-                $mail->Host = $this->host;
+                $mail->Host = $this->smtpHost;
+                $mail->Port = $this->smtpPort;
                 
-                // Most SMTP servers require authentication
-                $mail->SMTPAuth = true;
-                $mail->Username = $this->username;
-                $mail->Password = $this->password;
-                $mail->Port = intval($this->port); // Make sure port is an integer
+                // Use authentication if username is provided
+                if (!empty($this->smtpUsername)) {
+                    $mail->SMTPAuth = true;
+                    $mail->Username = $this->smtpUsername;
+                    $mail->Password = $this->smtpPassword;
+                }
                 
-                // Security settings
-                if ($this->encryption === 'ssl') {
-                    $mail->SMTPSecure = 'ssl';
-                } elseif ($this->encryption === 'tls') {
-                    $mail->SMTPSecure = 'tls';
+                // Set encryption type - use string constants instead of class constants
+                if ($this->smtpSecure === 'tls') {
+                    $mail->SMTPSecure = 'tls'; // Instead of PHPMailer::ENCRYPTION_STARTTLS
+                } else if ($this->smtpSecure === 'ssl') {
+                    $mail->SMTPSecure = 'ssl'; // Instead of PHPMailer::ENCRYPTION_SMTPS
                 } else {
-                    $mail->SMTPSecure = ''; // No encryption
-                    $mail->SMTPAutoTLS = false; // Disable auto TLS
+                    $mail->SMTPSecure = '';
+                    $mail->SMTPAutoTLS = false;
                 }
                 
-                // Additional SMTP options for troubleshooting
-                $mail->SMTPOptions = array(
-                    'ssl' => array(
-                        'verify_peer' => false,
-                        'verify_peer_name' => false,
-                        'allow_self_signed' => true
-                    )
-                );
-                
-                // For Gmail, you might need to enable less secure apps or use app passwords
-                if (strpos($this->host, 'gmail.com') !== false) {
-                    error_log("Gmail detected. Make sure you've enabled 'Less secure app access' or created an App Password.");
+                // Set timeout
+                $mail->Timeout = 30;
+            }
+            
+            // Set sender
+            $mail->setFrom($this->fromEmail, $this->fromName);
+            $mail->addReplyTo($this->replyToEmail, $this->replyToName);
+            
+            // Add recipients
+            if (is_array($to)) {
+                foreach ($to as $email) {
+                    $mail->addAddress($email);
                 }
-                
-                // Set a longer timeout for SMTP connections
-                $mail->Timeout = 60; // 60 seconds
-                
-                // Recipients
-                $mail->setFrom($this->fromEmail, $this->fromName);
+            } else {
                 $mail->addAddress($to);
-                
-                // Content
-                $mail->isHTML(true);
-                $mail->Subject = $subject;
-                $mail->Body = $message;
-                
-                if (!empty($plainTextMessage)) {
-                    $mail->AltBody = $plainTextMessage;
-                } else {
-                    $mail->AltBody = strip_tags($message);
+            }
+            
+            // Add CC recipients
+            if (!empty($cc) && is_array($cc)) {
+                foreach ($cc as $email) {
+                    $mail->addCC($email);
                 }
-                
-                // Attachments - make sure it's an array
-                if (!empty($attachments) && is_array($attachments)) {
-                    foreach ($attachments as $attachment) {
-                        if (is_string($attachment) && file_exists($attachment)) {
-                            $mail->addAttachment($attachment);
-                        }
+            }
+            
+            // Add BCC recipients
+            if (!empty($bcc) && is_array($bcc)) {
+                foreach ($bcc as $email) {
+                    $mail->addBCC($email);
+                }
+            }
+            
+            // Set content
+            $mail->isHTML(true);
+            $mail->Subject = $subject;
+            $mail->Body = $htmlBody;
+            
+            // Set plain text body if provided
+            if (!empty($textBody)) {
+                $mail->AltBody = $textBody;
+            } else {
+                // Generate plain text from HTML if not provided
+                $mail->AltBody = strip_tags(str_replace(['<br>', '<br/>', '<br />', '</p>', '</div>'], "\n", $htmlBody));
+            }
+            
+            // Add attachments
+            if (!empty($attachments) && is_array($attachments)) {
+                foreach ($attachments as $attachment) {
+                    if (file_exists($attachment)) {
+                        $mail->addAttachment($attachment);
+                    } else if ($this->debugMode) {
+                        error_log("Attachment not found: $attachment");
                     }
                 }
-                
-                // Try to send the email
-                if (!$mail->send()) {
-                    $this->lastError = "SMTP Error: " . $mail->ErrorInfo;
+            }
+            
+            // Send the email
+            if (!$mail->send()) {
+                $this->lastError = "Mailer Error: " . $mail->ErrorInfo;
+                if ($this->debugMode) {
                     error_log($this->lastError);
-                    return false;
                 }
-                
-                if ($this->debugMode) {
-                    error_log("Email sent successfully to $to using SMTP");
-                }
-                
-                return true;
-            } catch (\Exception $e) {
-                $this->lastError = "SMTP Error: " . $e->getMessage();
+                return false;
+            }
+            
+            if ($this->debugMode) {
+                error_log("Email sent successfully to: " . (is_array($to) ? implode(', ', $to) : $to));
+            }
+            
+            return true;
+        } catch (Exception $e) {
+            $this->lastError = "Exception: " . $e->getMessage();
+            if ($this->debugMode) {
                 error_log($this->lastError);
-                
-                if ($this->debugMode) {
-                    error_log("Falling back to PHP mail function");
-                }
-                // Fall back to PHP mail if PHPMailer fails
+                error_log($e->getTraceAsString());
             }
-        } else if ($this->useSmtp) {
-            $this->lastError = "SMTP is enabled but PHPMailer is not available";
-            error_log($this->lastError);
-            
-            if ($this->debugMode) {
-                error_log("PHPMailer available: " . (is_phpmailer_available() ? 'Yes' : 'No'));
-                error_log("Falling back to PHP mail function");
-            }
+            return false;
         }
-        
-        // Use PHP's mail function as fallback
-        $headers = "MIME-Version: 1.0" . "\r\n";
-        $headers .= "Content-type:text/html;charset=UTF-8" . "\r\n";
-        $headers .= "From: {$this->fromName} <{$this->fromEmail}>" . "\r\n";
-        
-        if ($this->debugMode) {
-            error_log("Sending mail using PHP mail() function");
-            error_log("To: $to");
-            error_log("Subject: $subject");
-            error_log("Headers: " . str_replace("\r\n", " | ", $headers));
-        }
-        
-        $success = @mail($to, $subject, $message, $headers);
-        
-        if (!$success) {
-            $this->lastError = "PHP mail() function failed to send email to $to. Check your mail server configuration.";
-            error_log($this->lastError);
-            
-            // Additional troubleshooting information
-            if ($this->debugMode) {
-                if (!function_exists('mail')) {
-                    error_log("PHP mail function is not available");
-                }
-                error_log("PHP mail configuration: " . ini_get('sendmail_path'));
-                error_log("PHP SMTP: " . ini_get('SMTP'));
-                error_log("PHP smtp_port: " . ini_get('smtp_port'));
-            }
-        } else if ($this->debugMode) {
-            error_log("Email sent successfully to $to using PHP mail()");
-        }
-        
-        return $success;
     }
     
     /**
-     * Send a promotional email
-     * 
-     * @param string $to Recipient email
-     * @param string $subject Email subject
-     * @param array $promotions Array of promotion details
-     * @return bool Success or failure
+     * Log email to file instead of sending (for development mode)
      */
-    public function sendPromotionEmail($to, $subject, $promotions) {
-        // Ensure promotions is an array
-        if (!is_array($promotions)) {
-            error_log("Promotions must be an array, " . gettype($promotions) . " given");
-            $promotions = []; // Set to empty array to avoid issues
+    private function logEmail($to, $subject, $htmlBody, $textBody, $attachments, $cc, $bcc) {
+        // Create logs directory if it doesn't exist
+        $logsDir = __DIR__ . '/../logs';
+        if (!is_dir($logsDir)) {
+            mkdir($logsDir, 0755, true);
         }
         
-        $message = '<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eee; border-radius: 5px; background-color: #f9f9f9;">';
-        $message .= '<h2 style="color: #4CAF50; margin-bottom: 20px;">Special Offers Just For You!</h2>';
-        $message .= '<p>Check out these amazing deals on agricultural products:</p>';
+        // Generate a unique log file name
+        $fileName = $logsDir . '/email_' . date('Y-m-d_H-i-s') . '_' . uniqid() . '.html';
         
-        if (!empty($promotions)) {
-            foreach ($promotions as $promo) {
-                if (!is_array($promo)) {
-                    continue; // Skip non-array items
-                }
-                
-                $message .= '<div style="margin-bottom: 20px; padding: 15px; background-color: #fff; border-radius: 5px; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">';
-                
-                // Ensure title and description exist
-                $title = isset($promo['title']) ? htmlspecialchars($promo['title']) : 'Special Offer';
-                $description = isset($promo['description']) ? htmlspecialchars($promo['description']) : 'Check out this special offer!';
-                
-                $message .= '<h3 style="color: #2E7D32; margin-top: 0;">' . $title . '</h3>';
-                $message .= '<p>' . $description . '</p>';
-                
-                if (isset($promo['discount'])) {
-                    $message .= '<p style="font-weight: bold; color: #E53935;">Discount: ' . htmlspecialchars($promo['discount']) . '</p>';
-                }
-                
-                if (isset($promo['expiry'])) {
-                    $message .= '<p><strong>Valid until:</strong> ' . htmlspecialchars($promo['expiry']) . '</p>';
-                }
-                
-                if (isset($promo['link'])) {
-                    $message .= '<p><a href="' . htmlspecialchars($promo['link']) . '" style="background-color: #4CAF50; color: white; padding: 10px 15px; text-decoration: none; border-radius: 3px; display: inline-block;">Shop Now</a></p>';
-                }
-                
-                $message .= '</div>';
+        // Format the log content
+        $logContent = "--- EMAIL LOG ---\n";
+        $logContent .= "Date: " . date('Y-m-d H:i:s') . "\n";
+        $logContent .= "To: " . (is_array($to) ? implode(', ', $to) : $to) . "\n";
+        
+        if (!empty($cc)) {
+            $logContent .= "CC: " . (is_array($cc) ? implode(', ', $cc) : $cc) . "\n";
+        }
+        
+        if (!empty($bcc)) {
+            $logContent .= "BCC: " . (is_array($bcc) ? implode(', ', $bcc) : $bcc) . "\n";
+        }
+        
+        $logContent .= "From: {$this->fromName} <{$this->fromEmail}>\n";
+        $logContent .= "Reply-To: {$this->replyToName} <{$this->replyToEmail}>\n";
+        $logContent .= "Subject: $subject\n";
+        
+        if (!empty($attachments)) {
+            $logContent .= "Attachments: " . implode(', ', $attachments) . "\n";
+        }
+        
+        $logContent .= "\n--- HTML CONTENT ---\n";
+        $logContent .= $htmlBody;
+        
+        if (!empty($textBody)) {
+            $logContent .= "\n\n--- TEXT CONTENT ---\n";
+            $logContent .= $textBody;
+        }
+        
+        // Write to file
+        if (file_put_contents($fileName, $logContent)) {
+            if ($this->debugMode) {
+                error_log("Email logged to file: $fileName");
             }
+            return true;
         } else {
-            $message .= '<div style="margin-bottom: 20px; padding: 15px; background-color: #fff; border-radius: 5px; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">';
-            $message .= '<h3 style="color: #2E7D32; margin-top: 0;">No Promotions Available</h3>';
-            $message .= '<p>Check back later for special offers!</p>';
-            $message .= '</div>';
+            $this->lastError = "Failed to write email log to file";
+            if ($this->debugMode) {
+                error_log($this->lastError);
+            }
+            return false;
+        }
+    }
+    
+    /**
+     * Fallback method to send email using PHP's mail() function
+     */
+    private function sendWithPHPMail($to, $subject, $htmlBody) {
+        // Convert to string if array
+        if (is_array($to)) {
+            $to = implode(', ', $to);
         }
         
-        $message .= '<p style="margin-top: 20px; font-size: 0.9em; color: #666;">If you no longer wish to receive promotional emails, you can <a href="#" style="color: #4CAF50;">unsubscribe here</a>.</p>';
-        $message .= '</div>';
+        // Set headers
+        $headers = "MIME-Version: 1.0\r\n";
+        $headers .= "Content-type: text/html; charset=UTF-8\r\n";
+        $headers .= "From: {$this->fromName} <{$this->fromEmail}>\r\n";
+        $headers .= "Reply-To: {$this->replyToName} <{$this->replyToEmail}>\r\n";
+        $headers .= "X-Mailer: PHP/" . phpversion();
         
-        return $this->sendEmail($to, $subject, $message);
+        // Attempt to send
+        if ($this->debugMode) {
+            error_log("Attempting to send mail with PHP mail() function");
+            error_log("To: $to | Subject: $subject");
+        }
+        
+        $result = @mail($to, $subject, $htmlBody, $headers);
+        
+        if (!$result) {
+            $this->lastError = "Failed to send email using PHP mail() function";
+            if ($this->debugMode) {
+                error_log($this->lastError);
+            }
+            return false;
+        }
+        
+        if ($this->debugMode) {
+            error_log("Email sent successfully via PHP mail() function");
+        }
+        
+        return true;
+    }
+    
+    /**
+     * Check if PHPMailer is available
+     */
+    private function isPHPMailerAvailable() {
+        // Try autoloader first
+        if (file_exists(__DIR__ . '/../vendor/autoload.php')) {
+            require_once __DIR__ . '/../vendor/autoload.php';
+            if (class_exists('PHPMailer\PHPMailer\PHPMailer')) {
+                return true;
+            }
+        }
+        
+        // Try manual inclusion
+        if (file_exists(__DIR__ . '/../PHPMailer/src/PHPMailer.php')) {
+            require_once __DIR__ . '/../PHPMailer/src/PHPMailer.php';
+            require_once __DIR__ . '/../PHPMailer/src/SMTP.php';
+            require_once __DIR__ . '/../PHPMailer/src/Exception.php';
+            if (class_exists('PHPMailer\PHPMailer\PHPMailer')) {
+                return true;
+            }
+        }
+        
+        if ($this->debugMode) {
+            error_log("PHPMailer not found. Will use PHP mail() function instead.");
+        }
+        
+        return false;
     }
     
     /**
      * Send an order confirmation email
      * 
      * @param string $to Recipient email
-     * @param array $orderDetails Order details
+     * @param array $orderData Order data
      * @return bool Success or failure
      */
-    public function sendOrderConfirmation($to, $orderDetails) {
-        // Make sure we have order details as an array
-        if (!is_array($orderDetails)) {
-            error_log("Order details must be an array");
+    public function sendOrderConfirmation($to, $orderData) {
+        // Validate order data
+        if (empty($orderData['order_id']) || empty($orderData['items'])) {
+            $this->lastError = "Missing required order data";
             return false;
         }
         
-        // Ensure all required keys exist
-        $required_keys = ['order_id', 'order_date', 'customer_name', 'payment_method', 'items', 'subtotal', 'shipping', 'total'];
-        foreach ($required_keys as $key) {
-            if (!isset($orderDetails[$key])) {
-                error_log("Missing required key in order details: $key");
-                return false;
-            }
+        // Set defaults for optional fields
+        $orderData['shipping_address'] = isset($orderData['shipping_address']) ? $orderData['shipping_address'] : '';
+        $orderData['payment_method'] = isset($orderData['payment_method']) ? $orderData['payment_method'] : 'Not specified';
+        $orderData['total'] = isset($orderData['total']) ? $orderData['total'] : 0;
+        $orderData['subtotal'] = isset($orderData['subtotal']) ? $orderData['subtotal'] : 0;
+        $orderData['shipping'] = isset($orderData['shipping']) ? $orderData['shipping'] : 0;
+        $orderData['tax'] = isset($orderData['tax']) ? $orderData['tax'] : 0;
+        $orderData['customer_name'] = isset($orderData['customer_name']) ? $orderData['customer_name'] : 'Customer';
+        $orderData['order_date'] = isset($orderData['order_date']) ? $orderData['order_date'] : date('Y-m-d H:i:s');
+        
+        // Create subject
+        $subject = "Order Confirmation - Order #{$orderData['order_id']}";
+        
+        // Create email body
+        $message = $this->getOrderConfirmationTemplate($orderData);
+        
+        // Send the email
+        return $this->sendEmail($to, $subject, $message);
+    }
+    
+    /**
+     * Generate order confirmation email template
+     */
+    private function getOrderConfirmationTemplate($orderData) {
+        // Format currency
+        $formatter = function($amount) {
+            return '$' . number_format($amount, 2);
+        };
+        
+        $html = '
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eee; border-radius: 5px; background-color: #f9f9f9;">
+            <div style="text-align: center; margin-bottom: 20px;">
+                <h1 style="color: #4CAF50;">Order Confirmation</h1>
+                <p>Thank you for your order!</p>
+            </div>
+            
+            <div style="background-color: #fff; padding: 15px; border-radius: 5px; margin-bottom: 20px;">
+                <h2 style="margin-top: 0; color: #2E7D32;">Order Summary</h2>
+                <p><strong>Order Number:</strong> #' . $orderData['order_id'] . '</p>
+                <p><strong>Order Date:</strong> ' . $orderData['order_date'] . '</p>
+                <p><strong>Payment Method:</strong> ' . $orderData['payment_method'] . '</p>
+            </div>
+            
+            <div style="background-color: #fff; padding: 15px; border-radius: 5px; margin-bottom: 20px;">
+                <h2 style="margin-top: 0; color: #2E7D32;">Order Details</h2>
+                <table style="width: 100%; border-collapse: collapse;">
+                    <thead>
+                        <tr style="background-color: #f5f5f5;">
+                            <th style="padding: 10px; text-align: left; border-bottom: 1px solid #ddd;">Product</th>
+                            <th style="padding: 10px; text-align: center; border-bottom: 1px solid #ddd;">Quantity</th>
+                            <th style="padding: 10px; text-align: right; border-bottom: 1px solid #ddd;">Price</th>
+                            <th style="padding: 10px; text-align: right; border-bottom: 1px solid #ddd;">Total</th>
+                        </tr>
+                    </thead>
+                    <tbody>';
+        
+        // Add order items
+        foreach ($orderData['items'] as $item) {
+            $name = htmlspecialchars($item['name']);
+            $quantity = $item['quantity'];
+            $price = $formatter($item['price']);
+            $total = $formatter($item['price'] * $item['quantity']);
+            
+            $html .= "
+                <tr>
+                    <td style=\"padding: 10px; text-align: left; border-bottom: 1px solid #ddd;\">$name</td>
+                    <td style=\"padding: 10px; text-align: center; border-bottom: 1px solid #ddd;\">$quantity</td>
+                    <td style=\"padding: 10px; text-align: right; border-bottom: 1px solid #ddd;\">$price</td>
+                    <td style=\"padding: 10px; text-align: right; border-bottom: 1px solid #ddd;\">$total</td>
+                </tr>";
         }
         
-        // Ensure items is an array
-        if (!is_array($orderDetails['items'])) {
-            error_log("Order items must be an array, " . gettype($orderDetails['items']) . " given");
-            $orderDetails['items'] = []; // Set to empty array to avoid issues
+        // Add totals
+        $html .= '
+                    </tbody>
+                    <tfoot>
+                        <tr>
+                            <td colspan="3" style="padding: 10px; text-align: right; border-top: 1px solid #ddd;"><strong>Subtotal:</strong></td>
+                            <td style="padding: 10px; text-align: right; border-top: 1px solid #ddd;">' . $formatter($orderData['subtotal']) . '</td>
+                        </tr>';
+        
+        if ($orderData['shipping'] > 0) {
+            $html .= '
+                        <tr>
+                            <td colspan="3" style="padding: 10px; text-align: right;"><strong>Shipping:</strong></td>
+                            <td style="padding: 10px; text-align: right;">' . $formatter($orderData['shipping']) . '</td>
+                        </tr>';
         }
         
-        $subject = 'Order Confirmation - AgriMarket Order #' . $orderDetails['order_id'];
+        if ($orderData['tax'] > 0) {
+            $html .= '
+                        <tr>
+                            <td colspan="3" style="padding: 10px; text-align: right;"><strong>Tax:</strong></td>
+                            <td style="padding: 10px; text-align: right;">' . $formatter($orderData['tax']) . '</td>
+                        </tr>';
+        }
         
+        $html .= '
+                        <tr>
+                            <td colspan="3" style="padding: 10px; text-align: right;"><strong>Total:</strong></td>
+                            <td style="padding: 10px; text-align: right; font-weight: bold; color: #4CAF50;">' . $formatter($orderData['total']) . '</td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>';
+        
+        // Add shipping address if provided
+        if (!empty($orderData['shipping_address'])) {
+            $html .= '
+            <div style="background-color: #fff; padding: 15px; border-radius: 5px; margin-bottom: 20px;">
+                <h2 style="margin-top: 0; color: #2E7D32;">Shipping Address</h2>
+                <p>' . nl2br(htmlspecialchars($orderData['shipping_address'])) . '</p>
+            </div>';
+        }
+        
+        // Footer
+        $html .= '
+            <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee; color: #666; font-size: 12px;">
+                <p>Thank you for shopping with AgriMarket! If you have any questions about your order, please contact our customer service.</p>
+                <p>&copy; ' . date('Y') . ' AgriMarket. All rights reserved.</p>
+            </div>
+        </div>';
+        
+        return $html;
+    }
+    
+    /**
+     * Send a promotional email to a user
+     * 
+     * @param string $to Recipient email address
+     * @param string $subject Email subject
+     * @param array $promotions Array of promotion details
+     * @return bool Success or failure
+     */
+    public function sendPromotionEmail($to, $subject, $promotions) {
+        // Validate inputs
+        if (empty($to)) {
+            $this->lastError = "Recipient email is required";
+            return false;
+        }
+        
+        if (empty($subject)) {
+            $subject = "Special Offers from AgriMarket";
+        }
+        
+        // Make sure promotions is an array
+        if (!is_array($promotions)) {
+            $promotions = [];
+        }
+        
+        // Build HTML email content
         $message = '<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eee; border-radius: 5px; background-color: #f9f9f9;">';
-        $message .= '<h2 style="color: #4CAF50; margin-bottom: 20px;">Thank You for Your Order!</h2>';
-        $message .= '<p>Dear ' . htmlspecialchars($orderDetails['customer_name']) . ',</p>';
-        $message .= '<p>Your order has been received and is now being processed. Here are your order details:</p>';
+        $message .= '<h1 style="color: #4CAF50; text-align: center;">Special Offers Just For You!</h1>';
+        $message .= '<p>Check out these amazing deals on agricultural products:</p>';
         
-        $message .= '<div style="background-color: #fff; padding: 15px; border-radius: 5px; margin: 20px 0; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">';
-        $message .= '<h3 style="margin-top: 0; color: #2E7D32;">Order Summary</h3>';
-        $message .= '<p><strong>Order Number:</strong> #' . $orderDetails['order_id'] . '</p>';
-        $message .= '<p><strong>Order Date:</strong> ' . $orderDetails['order_date'] . '</p>';
-        $message .= '<p><strong>Payment Method:</strong> ' . htmlspecialchars($orderDetails['payment_method']) . '</p>';
-        
-        // Order items table
-        $message .= '<table style="width: 100%; border-collapse: collapse; margin: 20px 0;">';
-        $message .= '<thead>';
-        $message .= '<tr style="background-color: #f2f2f2;">';
-        $message .= '<th style="padding: 10px; text-align: left; border-bottom: 1px solid #ddd;">Product</th>';
-        $message .= '<th style="padding: 10px; text-align: right; border-bottom: 1px solid #ddd;">Qty</th>';
-        $message .= '<th style="padding: 10px; text-align: right; border-bottom: 1px solid #ddd;">Price</th>';
-        $message .= '<th style="padding: 10px; text-align: right; border-bottom: 1px solid #ddd;">Total</th>';
-        $message .= '</tr>';
-        $message .= '</thead>';
-        $message .= '<tbody>';
-        
-        // Only try to loop through items if it's an array
-        if (is_array($orderDetails['items']) && !empty($orderDetails['items'])) {
-            foreach ($orderDetails['items'] as $item) {
-                if (!is_array($item)) {
-                    continue; // Skip non-array items
+        // Add promotions
+        if (!empty($promotions)) {
+            foreach ($promotions as $promotion) {
+                if (!is_array($promotion)) {
+                    continue;
                 }
                 
-                // Make sure all required item keys exist
-                if (!isset($item['name']) || !isset($item['quantity']) || !isset($item['price'])) {
-                    continue; // Skip items with missing data
+                // Set defaults for required fields
+                $title = isset($promotion['title']) ? htmlspecialchars($promotion['title']) : 'Special Offer';
+                $description = isset($promotion['description']) ? htmlspecialchars($promotion['description']) : 'Check out this special offer!';
+                $discount = isset($promotion['discount']) ? htmlspecialchars($promotion['discount']) : '';
+                $expiry = isset($promotion['expiry']) ? htmlspecialchars($promotion['expiry']) : '';
+                $link = isset($promotion['link']) ? htmlspecialchars($promotion['link']) : '';
+                
+                $message .= '<div style="margin-bottom: 20px; padding: 15px; background-color: #fff; border-radius: 5px; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">';
+                $message .= "<h2 style=\"color: #2E7D32; margin-top: 0;\">$title</h2>";
+                $message .= "<p>$description</p>";
+                
+                if (!empty($discount)) {
+                    $message .= "<p style=\"font-weight: bold; color: #E53935;\">Discount: $discount</p>";
                 }
                 
-                $message .= '<tr>';
-                $message .= '<td style="padding: 10px; text-align: left; border-bottom: 1px solid #ddd;">' . htmlspecialchars($item['name']) . '</td>';
-                $message .= '<td style="padding: 10px; text-align: right; border-bottom: 1px solid #ddd;">' . $item['quantity'] . '</td>';
-                $message .= '<td style="padding: 10px; text-align: right; border-bottom: 1px solid #ddd;">' . formatCurrency($item['price']) . '</td>';
-                $message .= '<td style="padding: 10px; text-align: right; border-bottom: 1px solid #ddd;">' . formatCurrency($item['price'] * $item['quantity']) . '</td>';
-                $message .= '</tr>';
+                if (!empty($expiry)) {
+                    $message .= "<p><strong>Valid until:</strong> $expiry</p>";
+                }
+                
+                if (!empty($link)) {
+                    $message .= "<p><a href=\"$link\" style=\"background-color: #4CAF50; color: white; padding: 10px 15px; text-decoration: none; border-radius: 3px; display: inline-block;\">Shop Now</a></p>";
+                }
+                
+                $message .= '</div>';
             }
         } else {
-            $message .= '<tr><td colspan="4" style="padding: 10px; text-align: center; border-bottom: 1px solid #ddd;">No items in order</td></tr>';
-        }
-        
-        $message .= '</tbody>';
-        $message .= '<tfoot>';
-        $message .= '<tr>';
-        $message .= '<td colspan="3" style="padding: 10px; text-align: right; border-bottom: 1px solid #ddd;"><strong>Subtotal:</strong></td>';
-        $message .= '<td style="padding: 10px; text-align: right; border-bottom: 1px solid #ddd;">' . formatCurrency($orderDetails['subtotal']) . '</td>';
-        $message .= '</tr>';
-        
-        $message .= '<tr>';
-        $message .= '<td colspan="3" style="padding: 10px; text-align: right; border-bottom: 1px solid #ddd;"><strong>Shipping:</strong></td>';
-        $message .= '<td style="padding: 10px; text-align: right; border-bottom: 1px solid #ddd;">' . formatCurrency($orderDetails['shipping']) . '</td>';
-        $message .= '</tr>';
-        
-        if (isset($orderDetails['tax']) && $orderDetails['tax'] > 0) {
-            $message .= '<tr>';
-            $message .= '<td colspan="3" style="padding: 10px; text-align: right; border-bottom: 1px solid #ddd;"><strong>Tax:</strong></td>';
-            $message .= '<td style="padding: 10px; text-align: right; border-bottom: 1px solid #ddd;">' . formatCurrency($orderDetails['tax']) . '</td>';
-            $message .= '</tr>';
-        }
-        
-        $message .= '<tr>';
-        $message .= '<td colspan="3" style="padding: 10px; text-align: right; border-bottom: 1px solid #ddd;"><strong>Total:</strong></td>';
-        $message .= '<td style="padding: 10px; text-align: right; border-bottom: 1px solid #ddd; font-weight: bold; color: #4CAF50;">' . formatCurrency($orderDetails['total']) . '</td>';
-        $message .= '</tr>';
-        $message .= '</tfoot>';
-        $message .= '</table>';
-        
-        // Shipping address
-        if (isset($orderDetails['shipping_address'])) {
-            $message .= '<div style="margin-top: 20px;">';
-            $message .= '<h3 style="color: #2E7D32;">Shipping Address</h3>';
-            $message .= '<p>' . nl2br(htmlspecialchars($orderDetails['shipping_address'])) . '</p>';
+            // No promotions provided, show default message
+            $message .= '<div style="margin-bottom: 20px; padding: 15px; background-color: #fff; border-radius: 5px; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">';
+            $message .= '<h2 style="color: #2E7D32; margin-top: 0;">Stay Tuned for Special Offers</h2>';
+            $message .= '<p>We\'re preparing some amazing deals for you. Check back soon for special offers on our products!</p>';
             $message .= '</div>';
         }
         
+        // Add footer with unsubscribe option
+        $message .= '<p style="margin-top: 20px; font-size: 0.9em; color: #666; text-align: center;">';
+        $message .= 'If you no longer wish to receive promotional emails, you can <a href="#" style="color: #4CAF50;">unsubscribe here</a>.';
+        $message .= '</p>';
         $message .= '</div>';
         
-        $message .= '<p>You can view your order status and history by logging into your account.</p>';
-        $message .= '<p><a href="https://agrimarket.com/my-account/orders" style="background-color: #4CAF50; color: white; padding: 10px 15px; text-decoration: none; border-radius: 3px; display: inline-block;">View Your Orders</a></p>';
-        
-        $message .= '<p style="margin-top: 20px;">If you have any questions about your order, please contact our customer service team.</p>';
-        $message .= '<p>Thank you for shopping with AgriMarket!</p>';
-        
-        $message .= '<div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee; font-size: 0.9em; color: #666;">';
-        $message .= '<p>© ' . date('Y') . ' AgriMarket. All rights reserved.</p>';
-        $message .= '</div>';
-        
-        $message .= '</div>';
-        
+        // Send the email
         return $this->sendEmail($to, $subject, $message);
     }
 } 
