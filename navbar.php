@@ -1,4 +1,9 @@
 <?php
+// Start the session only if it hasn't been started yet
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
 $current_page = basename($_SERVER['PHP_SELF']);
 ?>
 <nav class="navbar">
@@ -8,7 +13,9 @@ $current_page = basename($_SERVER['PHP_SELF']);
             <li><a href="index.php" class="nav-link <?php echo $current_page === 'index.php' ? 'active' : ''; ?>">Home</a></li>
             <li><a href="products.php" class="nav-link <?php echo $current_page === 'products.php' ? 'active' : ''; ?>">Products</a></li>
             <?php if (isset($_SESSION['user_id'])): ?>
-                <?php if ($_SESSION['role'] === 'vendor'): ?>
+                <?php if ($_SESSION['role'] === 'admin'): ?>
+                    <li><a href="admin_dashboard.php" class="nav-link <?php echo $current_page === 'admin_dashboard.php' ? 'active' : ''; ?>">Admin Dashboard</a></li>
+                <?php elseif ($_SESSION['role'] === 'vendor'): ?>
                     <li><a href="product_upload.php" class="nav-link <?php echo $current_page === 'product_upload.php' ? 'active' : ''; ?>">Upload Product</a></li>
                     <li><a href="orders.php" class="nav-link <?php echo $current_page === 'orders.php' ? 'active' : ''; ?>">Orders</a></li>
                 <?php else: ?>

@@ -1,20 +1,26 @@
 <?php
-// Database connection constants
-if (!defined('DB_HOST')) {
-    define('DB_HOST', 'localhost');
-    define('DB_USER', 'root');
-    define('DB_PASS', '');
-    define('DB_NAME', 'agrimarket');
-}
-
-// Connect to database
-$conn = mysqli_connect(DB_HOST, DB_USER, DB_PASS, DB_NAME);
+// Database connection
+$conn = mysqli_connect('localhost', 'root', '', 'agrimarket');
 if (!$conn) {
-    die("Connection failed: " . mysqli_connect_error());
+    error_log("Database connection failed: " . mysqli_connect_error());
+    die("An error occurred. Please try again later.");
 }
 
-// Start session
+// Session configuration
 if (session_status() === PHP_SESSION_NONE) {
+    session_set_cookie_params([
+        'lifetime' => 3600, // 1 hour
+        'path' => '/',
+        'domain' => '', // Set to your domain if needed
+        'secure' => false, // Set to true for HTTPS in production
+        'httponly' => true,
+        'samesite' => 'Strict'
+    ]);
     session_start();
+}
+
+// CSRF token (generate if not set)
+if (!isset($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
 }
 ?>

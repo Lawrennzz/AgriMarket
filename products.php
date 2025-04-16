@@ -1,6 +1,15 @@
 <?php
 include 'config.php';
 
+if (!isset($_SESSION['user_id'])) {
+    header("Location: login.php");
+    exit();
+}
+
+// Get user information
+$user_id = $_SESSION['user_id'];
+$role = $_SESSION['role'];
+
 $category_id = isset($_GET['category_id']) ? mysqli_real_escape_string($conn, $_GET['category_id']) : '';
 $search = isset($_GET['search']) ? mysqli_real_escape_string($conn, $_GET['search']) : '';
 $sort = isset($_GET['sort']) ? $_GET['sort'] : 'name_asc';
@@ -356,13 +365,11 @@ if ($search) {
                                 <?php endif; ?>
                             </div>
                             <div class="product-actions">
-                                <?php if ($product['stock'] > 0): ?>
+                                <?php if ($role === 'vendor'): ?>
+                                    <a href="edit_delete_product.php?id=<?php echo $product['product_id']; ?>" class="btn btn-primary">Edit</a>
+                                <?php else: ?>
                                     <button onclick="addToCart(<?php echo $product['product_id']; ?>)" class="add-to-cart">
                                         <i class="fas fa-shopping-cart"></i> Add to Cart
-                                    </button>
-                                <?php else: ?>
-                                    <button disabled class="add-to-cart" style="background: var(--light-gray);">
-                                        <i class="fas fa-shopping-cart"></i> Out of Stock
                                     </button>
                                 <?php endif; ?>
                                 <a href="product.php?id=<?php echo $product['product_id']; ?>" class="view-details">

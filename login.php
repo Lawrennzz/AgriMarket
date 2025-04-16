@@ -1,4 +1,5 @@
 <?php
+ob_start(); // Prevent output buffering issues
 include 'config.php';
 
 if (isset($_SESSION['user_id'])) {
@@ -15,25 +16,36 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $sql = "SELECT * FROM users WHERE email = ?";
     $stmt = mysqli_prepare($conn, $sql);
     mysqli_stmt_bind_param($stmt, "s", $email);
-    mysqli_stmt_execute($stmt);
-    $result = mysqli_stmt_get_result($stmt);
+    if (!mysqli_stmt_execute($stmt)) {
+        error_log("Login query failed: " . mysqli_error($conn));
+        $error = "An error occurred. Please try again later.";
+    } else {
+        $result = mysqli_stmt_get_result($stmt);
+        if ($user = mysqli_fetch_assoc($result)) {
+            if (password_verify($password, $user['password'])) {
+                $_SESSION['user_id'] = $user['user_id'];
+                $_SESSION['role'] = $user['role'];
+                $_SESSION['name'] = $user['name'];
+                $_SESSION['last_activity'] = time(); // Add this to match dashboard.php
 
-    if ($user = mysqli_fetch_assoc($result)) {
-        if (password_verify($password, $user['password'])) {
-            $_SESSION['user_id'] = $user['user_id'];
-            $_SESSION['role'] = $user['role'];
-            $_SESSION['name'] = $user['name'];
-            
-            header("Location: dashboard.php");
-            exit();
+                // Debug: Log session variables
+                error_log("Login successful: user_id=" . $_SESSION['user_id'] . ", role=" . $_SESSION['role'] . ", name=" . $_SESSION['name'] . ", last_activity=" . $_SESSION['last_activity']);
+
+                header("Location: dashboard.php");
+                exit();
+            } else {
+                error_log("Password verification failed for email: $email");
+                $error = "Invalid email or password";
+            }
         } else {
+            error_log("Email not found: $email");
             $error = "Invalid email or password";
         }
-    } else {
-        $error = "Invalid email or password";
     }
+    mysqli_stmt_close($stmt);
 }
 ?>
+
 <!DOCTYPE html>
 <html>
 <head>
@@ -184,3 +196,4 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     <?php include 'footer.php'; ?>
 </body>
 </html>
+<?php ob_end_flush(); // Flush output buffer ?>

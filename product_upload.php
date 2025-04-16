@@ -19,6 +19,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $price = floatval($_POST['price']);
     $stock = intval($_POST['stock']);
     $category_id = intval($_POST['category_id']);
+    $packaging = mysqli_real_escape_string($conn, $_POST['packaging'] ?? ''); // Added packaging field
     $user_id = $_SESSION['user_id'];
     
     // Fetch the actual vendor_id from the vendors table
@@ -33,10 +34,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } else {
         $error_message = "Vendor profile not found. Please create a vendor profile first.";
     }
+    mysqli_stmt_close($vendor_stmt);
 
     // Validate inputs
-    if (empty($error_message) && (empty($name) || empty($description) || $price <= 0 || $stock < 0 || $category_id <= 0)) {
-        $error_message = "Please fill all required fields with valid values.";
+    if (empty($error_message)) {
+        if (empty($name)) {
+            $error_message = "Product name is required.";
+        } elseif (empty($description)) {
+            $error_message = "Description is required.";
+        } elseif ($price <= 0) {
+            $error_message = "Price must be greater than 0.";
+        } elseif ($stock < 0) {
+            $error_message = "Stock cannot be negative.";
+        } elseif ($category_id <= 0) {
+            $error_message = "Please select a valid category.";
+        }
+    }
+
+    // Validate category_id exists
+    if (empty($error_message)) {
+        $category_check = mysqli_prepare($conn, "SELECT category_id FROM categories WHERE category_id = ?");
+        mysqli_stmt_bind_param($category_check, "i", $category_id);
+        mysqli_stmt_execute($category_check);
+        $category_result = mysqli_stmt_get_result($category_check);
+        if (mysqli_num_rows($category_result) === 0) {
+            $error_message = "Invalid category selected.";
+        }
+        mysqli_stmt_close($category_check);
     }
 
     if (empty($error_message)) {
@@ -51,6 +75,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $new_filename = uniqid() . '.' . $ext;
                 $upload_path = 'uploads/products/' . $new_filename;
                 
+                // Ensure the uploads/products/ directory exists and is writable
+                // Run: mkdir -p uploads/products && chmod 775 uploads/products && chown www-data:www-data uploads/products
                 if (move_uploaded_file($_FILES['image']['tmp_name'], $upload_path)) {
                     $image_url = $upload_path;
                 } else {
@@ -59,24 +85,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } else {
                 $error_message = "Invalid image format. Allowed formats: JPG, JPEG, PNG, WEBP";
             }
+        } else {
+            $error_message = "Image is required.";
         }
     }
         
-    if (empty($error_message)) {
+    if (empty($error_message) && !empty($image_url)) {
         // Insert product into database
         $query = "INSERT INTO products (vendor_id, name, description, price, stock, packaging, category_id, image_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
         $stmt = mysqli_prepare($conn, $query);
-        $packaging = ''; // Since packaging is not provided in the form
-        mysqli_stmt_bind_param($stmt, 'issiiiss', $vendor_id, $name, $description, $price, $stock, $packaging, $category_id, $image_url);
+        mysqli_stmt_bind_param($stmt, 'issdisss', $vendor_id, $name, $description, $price, $stock, $packaging, $category_id, $image_url);
         
         if (mysqli_stmt_execute($stmt)) {
             $success_message = "Product added successfully!";
             // Clear form
             $_POST = array();
         } else {
-            $error_message = "Failed to add product. Please try again.";
+            // Log the detailed error for debugging
+            $detailed_error = "Failed to add product: " . mysqli_error($conn) . " | Query: " . $query . " | Values: " . json_encode([$vendor_id, $name, $description, $price, $stock, $packaging, $category_id, $image_url]);
+            error_log($detailed_error);
+            $error_message = "Failed to add product. Please try again. (Error: " . htmlspecialchars(mysqli_error($conn)) . ")";
         }
+        
+        mysqli_stmt_close($stmt);
+    } else {
+        $error_message = "Image URL is required.";
     }
+
+    error_log("Image URL: " . $image_url);
 }
 ?>
 <!DOCTYPE html>
@@ -321,6 +357,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             <label class="form-label" for="stock">Stock Quantity*</label>
                             <input type="number" id="stock" name="stock" class="form-control" 
                                    min="0" value="<?php echo htmlspecialchars($_POST['stock'] ?? ''); ?>" required>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label" for="packaging">Packaging</label>
+                            <input type="text" id="packaging" name="packaging" class="form-control" 
+                                   value="<?php echo htmlspecialchars($_POST['packaging'] ?? ''); ?>">
                         </div>
                     </div>
 

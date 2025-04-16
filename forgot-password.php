@@ -1,9 +1,10 @@
 <?php
+session_start(); // Start the session
 include 'config.php'; // Include your database connection
 
 $error = '';
 $success = '';
-$step = 1; // Track the step of the process
+$step = isset($_SESSION['step']) ? $_SESSION['step'] : 1; // Default to step 1 if not set
 
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     if ($step === 1) {
@@ -27,11 +28,10 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 if (mysqli_num_rows($result) > 0) {
                     // Fetch user data
                     $user = mysqli_fetch_assoc($result);
-                    $security_question = $user['security_question'];
-                    $phone_number = $user['phone_number'];
-
-                    // Proceed to the next step
-                    $step = 2; // Move to security question verification
+                    $_SESSION['email'] = $email; // Store email in session
+                    $_SESSION['user'] = $user; // Store user data in session
+                    $_SESSION['step'] = 2; // Move to security question verification
+                    $step = 2; // Update local variable for immediate use
                 } else {
                     $error = "Email not found.";
                 }
@@ -39,6 +39,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         }
     } elseif ($step === 2) {
         $security_answer = mysqli_real_escape_string($conn, $_POST['security_answer']);
+        $user = $_SESSION['user']; // Retrieve user data from session
 
         // Validate security answer
         if (empty($security_answer)) {
@@ -48,18 +49,18 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             $verification_code = rand(100000, 999999); // Generate a 6-digit code
 
             // Send SMS using Twilio or another SMS service
-            // Example: $twilio->messages->create($phone_number, ['from' => 'your_twilio_number', 'body' => "Your verification code is: $verification_code"]);
+            // Example: $twilio->messages->create($user['phone_number'], ['from' => 'your_twilio_number', 'body' => "Your verification code is: $verification_code"]);
 
             // Store the verification code in the session
             $_SESSION['verification_code'] = $verification_code;
-
-            // Proceed to the next step
-            $step = 3; // Move to SMS verification
+            $_SESSION['step'] = 3; // Move to SMS verification
+            $step = 3; // Update local variable for immediate use
         } else {
             $error = "Incorrect security answer.";
         }
     } elseif ($step === 3) {
         $input_code = mysqli_real_escape_string($conn, $_POST['verification_code']);
+        $email = $_SESSION['email']; // Retrieve email from session
 
         // Validate verification code
         if ($input_code == $_SESSION['verification_code']) {
@@ -74,8 +75,12 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             mysqli_stmt_execute($update_stmt);
 
             $success = "Your password has been reset successfully!";
-            // Clear the verification code from the session
+            // Clear session data
             unset($_SESSION['verification_code']);
+            unset($_SESSION['step']);
+            unset($_SESSION['email']);
+            unset($_SESSION['user']);
+            $step = 1; // Reset to initial step
         } else {
             $error = "Invalid verification code.";
         }
@@ -160,7 +165,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         }
 
         button:hover {
-            background-color: #0056b3; /* Darker shade on hover */
+            background-color: #0056b3;
         }
     </style>
 </head>
@@ -185,7 +190,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 <button type="submit">Next</button>
             <?php elseif ($step === 2): ?>
                 <div>
-                    <label><?php echo htmlspecialchars($security_question); ?></label>
+                    <label><?php echo htmlspecialchars($_SESSION['user']['security_question']); ?></label>
                     <input type="text" name="security_answer" required>
                 </div>
                 <button type="submit">Verify Answer</button>
