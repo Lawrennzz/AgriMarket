@@ -89,7 +89,7 @@ if (isset($_POST['delete_product'])) {
 
     if (mysqli_stmt_execute($delete_stmt)) {
         $success_message = "Product deleted successfully!";
-        header("Location: products_list.php"); // Redirect to product list after deletion
+        header("Location: products.php"); // Redirect to product list after deletion
         exit();
     } else {
         $error_message = "Failed to delete product. Please try again.";
@@ -129,6 +129,16 @@ if (isset($_POST['delete_product'])) {
             color: var(--medium-gray);
         }
 
+        .form-grid {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 2rem;
+        }
+
+        .form-section {
+            margin-bottom: 1.5rem;
+        }
+
         .form-group {
             margin-bottom: 1.5rem;
         }
@@ -154,6 +164,73 @@ if (isset($_POST['delete_product'])) {
             box-shadow: 0 0 0 2px rgba(var(--primary-rgb), 0.1);
         }
 
+        textarea.form-control {
+            min-height: 150px;
+            resize: vertical;
+        }
+
+        .image-preview {
+            width: 100%;
+            height: 300px;
+            border: 2px dashed var(--light-gray);
+            border-radius: var(--border-radius);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 1rem;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .image-preview img {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+        }
+
+        .image-preview-placeholder {
+            color: var(--medium-gray);
+            text-align: center;
+        }
+
+        .image-preview-placeholder i {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+        }
+
+        .file-input-wrapper {
+            position: relative;
+            overflow: hidden;
+            display: inline-block;
+        }
+
+        .file-input {
+            position: absolute;
+            left: 0;
+            top: 0;
+            opacity: 0;
+            cursor: pointer;
+            width: 100%;
+            height: 100%;
+        }
+
+        .btn-upload {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            background: var(--light-gray);
+            color: var(--dark-gray);
+            padding: 0.75rem 1.5rem;
+            border-radius: var(--border-radius);
+            cursor: pointer;
+            transition: var(--transition);
+        }
+
+        .btn-upload:hover {
+            background: var(--medium-gray);
+            color: white;
+        }
+
         .alert {
             padding: 1rem;
             border-radius: var(--border-radius);
@@ -172,26 +249,14 @@ if (isset($_POST['delete_product'])) {
             border: 1px solid #f5c6cb;
         }
 
-        .btn {
-            padding: 0.75rem 1.5rem;
-            border: none;
-            border-radius: var(--border-radius);
-            cursor: pointer;
-            transition: var(--transition);
-        }
+        @media (max-width: 768px) {
+            .form-grid {
+                grid-template-columns: 1fr;
+            }
 
-        .btn-primary {
-            background: var(--primary-color);
-            color: white;
-        }
-
-        .btn-danger {
-            background: var(--danger-color);
-            color: white;
-        }
-
-        .btn:hover {
-            opacity: 0.9;
+            .upload-container {
+                padding: 1rem;
+            }
         }
     </style>
 </head>
@@ -199,7 +264,10 @@ if (isset($_POST['delete_product'])) {
     <?php include 'navbar.php'; ?>
 
     <div class="upload-container">
-        <h1 class="form-title">Edit Product</h1>
+        <div class="form-header">
+            <h1 class="form-title">Edit Product</h1>
+            <p class="form-subtitle">Update the details of your product below</p>
+        </div>
 
         <?php if ($success_message): ?>
             <div class="alert alert-success">
@@ -214,64 +282,111 @@ if (isset($_POST['delete_product'])) {
         <?php endif; ?>
 
         <form method="POST" enctype="multipart/form-data">
-            <div class="form-group">
-                <label class="form-label" for="name">Product Name*</label>
-                <input type="text" id="name" name="name" class="form-control" 
-                       value="<?php echo htmlspecialchars($name); ?>" required>
+            <div class="form-grid">
+                <div class="form-section">
+                    <div class="form-group">
+                        <label class="form-label" for="name">Product Name*</label>
+                        <input type="text" id="name" name="name" class="form-control" 
+                               value="<?php echo htmlspecialchars($name); ?>" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="description">Description*</label>
+                        <textarea id="description" name="description" class="form-control" 
+                                  required><?php echo htmlspecialchars($description); ?></textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="category">Category*</label>
+                        <select id="category" name="category_id" class="form-control" required>
+                            <option value="">Select a category</option>
+                            <?php
+                            // Fetch categories for dropdown
+                            $categories_query = mysqli_query($conn, "SELECT category_id, name FROM categories ORDER BY name");
+                            while ($category = mysqli_fetch_assoc($categories_query)): ?>
+                                <option value="<?php echo $category['category_id']; ?>" <?php echo ($category['category_id'] == $category_id) ? 'selected' : ''; ?>>
+                                    <?php echo htmlspecialchars($category['name']); ?>
+                                </option>
+                            <?php endwhile; ?>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="price">Price*</label>
+                        <input type="number" id="price" name="price" class="form-control" 
+                               value="<?php echo htmlspecialchars($price); ?>" min="0.01" step="0.01" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="stock">Stock Quantity*</label>
+                        <input type="number" id="stock" name="stock" class="form-control" 
+                               value="<?php echo htmlspecialchars($stock); ?>" min="0" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="packaging">Packaging</label>
+                        <input type="text" id="packaging" name="packaging" class="form-control" 
+                               value="<?php echo htmlspecialchars($packaging); ?>">
+                    </div>
+                </div>
+
+                <div class="form-section">
+                    <div class="form-group">
+                        <label class="form-label">Product Image</label>
+                        <div class="image-preview" id="imagePreview">
+                            <?php if ($image_url): ?>
+                                <img src="<?php echo htmlspecialchars($image_url); ?>" alt="Product Image">
+                            <?php else: ?>
+                                <div class="image-preview-placeholder">
+                                    <i class="fas fa-cloud-upload-alt"></i>
+                                    <div>Click to upload image</div>
+                                </div>
+                            <?php endif; ?>
+                        </div>
+                        <div class="file-input-wrapper">
+                            <input type="file" name="image" id="image" class="file-input" 
+                                   accept=".jpg,.jpeg,.png,.webp">
+                            <div class="btn-upload">
+                                <i class="fas fa-upload"></i>
+                                Choose Image
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
 
-            <div class="form-group">
-                <label class="form-label" for="description">Description*</label>
-                <textarea id="description" name="description" class="form-control" 
-                          required><?php echo htmlspecialchars($description); ?></textarea>
-            </div>
-
-            <div class="form-group">
-                <label class="form-label" for="price">Price*</label>
-                <input type="number" id="price" name="price" class="form-control" 
-                       value="<?php echo htmlspecialchars($price); ?>" min="0.01" step="0.01" required>
-            </div>
-
-            <div class="form-group">
-                <label class="form-label" for="stock">Stock Quantity*</label>
-                <input type="number" id="stock" name="stock" class="form-control" 
-                       value="<?php echo htmlspecialchars($stock); ?>" min="0" required>
-            </div>
-
-            <div class="form-group">
-                <label class="form-label" for="packaging">Packaging</label>
-                <input type="text" id="packaging" name="packaging" class="form-control" 
-                       value="<?php echo htmlspecialchars($packaging); ?>">
-            </div>
-
-            <div class="form-group">
-                <label class="form-label" for="category">Category*</label>
-                <select id="category" name="category_id" class="form-control" required>
-                    <option value="">Select a category</option>
-                    <?php
-                    // Fetch categories for dropdown
-                    $categories_query = mysqli_query($conn, "SELECT category_id, name FROM categories ORDER BY name");
-                    while ($category = mysqli_fetch_assoc($categories_query)): ?>
-                        <option value="<?php echo $category['category_id']; ?>" <?php echo ($category['category_id'] == $category_id) ? 'selected' : ''; ?>>
-                            <?php echo htmlspecialchars($category['name']); ?>
-                        </option>
-                    <?php endwhile; ?>
-                </select>
-            </div>
-
-            <div class="form-group">
-                <label class="form-label" for="image">Product Image</label>
-                <input type="file" id="image" name="image" class="form-control" accept=".jpg,.jpeg,.png,.webp">
-            </div>
-
-            <button type="submit" name="edit_product" class="btn btn-primary">Update Product</button>
+            <button type="submit" name="edit_product" class="btn btn-primary" style="width: 100%;">
+                Update Product
+            </button>
         </form>
 
         <form method="POST" onsubmit="return confirm('Are you sure you want to delete this product?');">
-            <button type="submit" name="delete_product" class="btn btn-danger">Delete Product</button>
+            <button type="submit" name="delete_product" class="btn btn-danger" style="width: 100%;">Delete Product</button>
         </form>
     </div>
 
     <?php include 'footer.php'; ?>
+
+    <script>
+        // Image preview functionality
+        const imageInput = document.getElementById('image');
+        const imagePreview = document.getElementById('imagePreview');
+
+        imageInput.addEventListener('change', function() {
+            const file = this.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    imagePreview.innerHTML = `<img src="${e.target.result}" alt="Product Image">`;
+                }
+                reader.readAsDataURL(file);
+            } else {
+                imagePreview.innerHTML = `<div class="image-preview-placeholder">
+                                              <i class="fas fa-cloud-upload-alt"></i>
+                                              <div>Click to upload image</div>
+                                          </div>`;
+            }
+        });
+    </script>
 </body>
 </html>

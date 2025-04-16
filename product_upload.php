@@ -108,11 +108,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         
         mysqli_stmt_close($stmt);
-    } else {
-        $error_message = "Image URL is required.";
-    }
-
-    error_log("Image URL: " . $image_url);
+    } 
 }
 ?>
 <!DOCTYPE html>

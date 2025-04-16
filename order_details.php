@@ -7,65 +7,173 @@ if (!isset($_SESSION['user_id']) || !isset($_GET['id'])) {
 }
 
 $user_id = $_SESSION['user_id'];
-$role = $_SESSION['role'];
+$role = $_SESSION['role'] ?? 'customer'; // Default to customer if role is unset
 $order_id = intval($_GET['id']);
 
 // Get order details
-if ($role === 'vendor') {
-    $order_query = mysqli_query($conn, "
-        SELECT o.*, u.name as customer_name, u.email as customer_email, u.phone as customer_phone
-        FROM orders o
-        JOIN users u ON o.user_id = u.user_id
-        WHERE o.order_id = $order_id
-        AND EXISTS (
-            SELECT 1 FROM order_items oi 
-            JOIN products p ON oi.product_id = p.product_id 
-            WHERE oi.order_id = o.order_id AND p.vendor_id = $user_id
-        )
-    ");
-} else {
-    $order_query = mysqli_query($conn, "
-        SELECT o.* FROM orders o
-        WHERE o.order_id = $order_id AND o.user_id = $user_id
-    ");
-}
+$order = null;
+try {
+    if ($role === 'vendor') {
+        // Fetch vendor_id from vendors table
+        $vendor_query = "SELECT vendor_id FROM vendors WHERE user_id = ?";
+        $vendor_stmt = mysqli_prepare($conn, $vendor_query);
+        if (!$vendor_stmt) {
+            throw new Exception("Vendor query prepare failed: " . mysqli_error($conn));
+        }
+        mysqli_stmt_bind_param($vendor_stmt, "i", $user_id);
+        mysqli_stmt_execute($vendor_stmt);
+        $vendor_result = mysqli_stmt_get_result($vendor_stmt);
+        if (!$vendor_row = mysqli_fetch_assoc($vendor_result)) {
+            $_SESSION['error_message'] = "Vendor profile not found.";
+            header("Location: orders.php");
+            exit();
+        }
+        $vendor_id = $vendor_row['vendor_id'];
+        mysqli_stmt_close($vendor_stmt);
 
-if (!$order = mysqli_fetch_assoc($order_query)) {
+        // Vendor order query
+        $order_query = "
+            SELECT o.*, u.name as customer_name, u.email as customer_email, u.phone_number as customer_phone
+            FROM orders o
+            JOIN users u ON o.user_id = u.user_id
+            WHERE o.order_id = ? 
+            AND EXISTS (
+                SELECT 1 FROM order_items oi 
+                JOIN products p ON oi.product_id = p.product_id 
+                WHERE oi.order_id = o.order_id AND p.vendor_id = ?
+            )";
+        $stmt = mysqli_prepare($conn, $order_query);
+        if (!$stmt) {
+            throw new Exception("Order query prepare failed: " . mysqli_error($conn));
+        }
+        mysqli_stmt_bind_param($stmt, "ii", $order_id, $vendor_id);
+    } else {
+        // Customer order query
+        $order_query = "
+            SELECT o.* FROM orders o
+            WHERE o.order_id = ? AND o.user_id = ?";
+        $stmt = mysqli_prepare($conn, $order_query);
+        if (!$stmt) {
+            throw new Exception("Order query prepare failed: " . mysqli_error($conn));
+        }
+        mysqli_stmt_bind_param($stmt, "ii", $order_id, $user_id);
+    }
+
+    mysqli_stmt_execute($stmt);
+    $result = mysqli_stmt_get_result($stmt);
+    $order = mysqli_fetch_assoc($result);
+    mysqli_stmt_close($stmt);
+
+    if (!$order) {
+        $_SESSION['error_message'] = "Order not found or you lack permission to view it.";
+        header("Location: orders.php");
+        exit();
+    }
+} catch (Exception $e) {
+    error_log("Order details error: " . $e->getMessage());
+    $_SESSION['error_message'] = "Failed to load order details. Please try again.";
     header("Location: orders.php");
     exit();
 }
 
 // Get order items
-$items_query = mysqli_query($conn, "
+$items_query = "
     SELECT oi.*, p.name, p.image_url, u.name as vendor_name 
     FROM order_items oi 
     JOIN products p ON oi.product_id = p.product_id 
-    JOIN users u ON p.vendor_id = u.user_id 
-    WHERE oi.order_id = $order_id
-");
+    JOIN vendors v ON p.vendor_id = v.vendor_id 
+    JOIN users u ON v.user_id = u.user_id 
+    WHERE oi.order_id = ?";
+$stmt = mysqli_prepare($conn, $items_query);
+if (!$stmt) {
+    error_log("Items query prepare failed: " . mysqli_error($conn));
+    $_SESSION['error_message'] = "Failed to load order items.";
+    header("Location: orders.php");
+    exit();
+}
+mysqli_stmt_bind_param($stmt, "i", $order_id);
+mysqli_stmt_execute($stmt);
+$items_result = mysqli_stmt_get_result($stmt);
 
 // Handle status update for vendors
 if ($role === 'vendor' && isset($_POST['status'])) {
-    $new_status = mysqli_real_escape_string($conn, $_POST['status']);
-    mysqli_query($conn, "
-        UPDATE orders 
-        SET status = '$new_status', 
-            updated_at = NOW() 
-        WHERE order_id = $order_id
-    ");
-    
-    // Redirect to refresh page
+    $new_status = $_POST['status'];
+    if (!in_array($new_status, ['pending', 'processing', 'shipped', 'delivered', 'cancelled'])) {
+        $_SESSION['error_message'] = "Invalid status selected.";
+        header("Location: order_details.php?id=$order_id");
+        exit();
+    }
+
+    // Start transaction
+    mysqli_begin_transaction($conn);
+    try {
+        // Update order status
+        $update_query = "UPDATE orders SET status = ? WHERE order_id = ?";
+        $update_stmt = mysqli_prepare($conn, $update_query);
+        if (!$update_stmt) {
+            throw new Exception("Update query prepare failed: " . mysqli_error($conn));
+        }
+        mysqli_stmt_bind_param($update_stmt, "si", $new_status, $order_id);
+        if (!mysqli_stmt_execute($update_stmt)) {
+            throw new Exception("Failed to update order status: " . mysqli_error($conn));
+        }
+        mysqli_stmt_close($update_stmt);
+
+        // Log status change in order_status_history
+        $history_query = "INSERT INTO order_status_history (order_id, status) VALUES (?, ?)";
+        $history_stmt = mysqli_prepare($conn, $history_query);
+        if (!$history_stmt) {
+            throw new Exception("History query prepare failed: " . mysqli_error($conn));
+        }
+        mysqli_stmt_bind_param($history_stmt, "is", $order_id, $new_status);
+        if (!mysqli_stmt_execute($history_stmt)) {
+            throw new Exception("Failed to log status history: " . mysqli_error($conn));
+        }
+        mysqli_stmt_close($history_stmt);
+
+        // Log to audit_logs
+        $log_query = "INSERT INTO audit_logs (user_id, action, table_name, record_id, details) VALUES (?, ?, ?, ?, ?)";
+        $log_stmt = mysqli_prepare($conn, $log_query);
+        if (!$log_stmt) {
+            throw new Exception("Audit log query prepare failed: " . mysqli_error($conn));
+        }
+        $action = "update_order_status";
+        $table_name = "orders";
+        $details = json_encode(['order_id' => $order_id, 'new_status' => $new_status]);
+        mysqli_stmt_bind_param($log_stmt, "issis", $user_id, $action, $table_name, $order_id, $details);
+        if (!mysqli_stmt_execute($log_stmt)) {
+            throw new Exception("Failed to log audit: " . mysqli_error($conn));
+        }
+        mysqli_stmt_close($log_stmt);
+
+        mysqli_commit($conn);
+        $_SESSION['success_message'] = "Order status updated successfully.";
+    } catch (Exception $e) {
+        mysqli_rollback($conn);
+        error_log("Status update error: " . $e->getMessage());
+        $_SESSION['error_message'] = "Failed to update order status: " . htmlspecialchars($e->getMessage());
+    }
     header("Location: order_details.php?id=$order_id");
     exit();
 }
 
 // Get order timeline
-$timeline_query = mysqli_query($conn, "
+$timeline_query = "
     SELECT * FROM order_status_history 
-    WHERE order_id = $order_id 
-    ORDER BY created_at DESC
-");
+    WHERE order_id = ? 
+    ORDER BY created_at DESC";
+$timeline_stmt = mysqli_prepare($conn, $timeline_query);
+if (!$timeline_stmt) {
+    error_log("Timeline query prepare failed: " . mysqli_error($conn));
+    $_SESSION['error_message'] = "Failed to load order timeline.";
+    header("Location: orders.php");
+    exit();
+}
+mysqli_stmt_bind_param($timeline_stmt, "i", $order_id);
+mysqli_stmt_execute($timeline_stmt);
+$timeline_result = mysqli_stmt_get_result($timeline_stmt);
 ?>
+
 <!DOCTYPE html>
 <html>
 <head>
@@ -219,6 +327,7 @@ $timeline_query = mysqli_query($conn, "
 
         .timeline-item:last-child {
             border-left: none;
+            padding-bottom: 0;
         }
 
         .timeline-dot {
@@ -293,6 +402,24 @@ $timeline_query = mysqli_query($conn, "
             background: var(--primary-dark);
         }
 
+        .alert {
+            padding: 1rem;
+            border-radius: var(--border-radius);
+            margin-bottom: 1rem;
+        }
+
+        .alert-success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .alert-error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
         @media (max-width: 992px) {
             .details-container {
                 grid-template-columns: 1fr;
@@ -306,6 +433,20 @@ $timeline_query = mysqli_query($conn, "
     <?php include 'navbar.php'; ?>
 
     <div class="container">
+        <?php if (isset($_SESSION['success_message'])): ?>
+            <div class="alert alert-success">
+                <?php echo htmlspecialchars($_SESSION['success_message']); ?>
+                <?php unset($_SESSION['success_message']); ?>
+            </div>
+        <?php endif; ?>
+
+        <?php if (isset($_SESSION['error_message'])): ?>
+            <div class="alert alert-error">
+                <?php echo htmlspecialchars($_SESSION['error_message']); ?>
+                <?php unset($_SESSION['error_message']); ?>
+            </div>
+        <?php endif; ?>
+
         <div class="details-container">
             <div class="order-info">
                 <div class="order-header">
@@ -323,26 +464,26 @@ $timeline_query = mysqli_query($conn, "
                         <h2 class="section-title">Customer Information</h2>
                         <div class="info-row">
                             <span class="info-label">Name:</span>
-                            <span class="info-value"><?php echo htmlspecialchars($order['customer_name']); ?></span>
+                            <span class="info-value"><?php echo htmlspecialchars($order['customer_name'] ?? 'N/A'); ?></span>
                         </div>
                         <div class="info-row">
                             <span class="info-label">Email:</span>
-                            <span class="info-value"><?php echo htmlspecialchars($order['customer_email']); ?></span>
+                            <span class="info-value"><?php echo htmlspecialchars($order['customer_email'] ?? 'N/A'); ?></span>
                         </div>
                         <div class="info-row">
                             <span class="info-label">Phone:</span>
-                            <span class="info-value"><?php echo htmlspecialchars($order['customer_phone']); ?></span>
+                            <span class="info-value"><?php echo htmlspecialchars($order['customer_phone'] ?? 'N/A'); ?></span>
                         </div>
                         <div class="info-row">
                             <span class="info-label">Address:</span>
-                            <span class="info-value"><?php echo htmlspecialchars($order['shipping_address']); ?></span>
+                            <span class="info-value"><?php echo htmlspecialchars($order['shipping_address'] ?? 'N/A'); ?></span>
                         </div>
                     </div>
                 <?php endif; ?>
 
                 <div class="order-items">
                     <h2 class="section-title">Order Items</h2>
-                    <?php while ($item = mysqli_fetch_assoc($items_query)): ?>
+                    <?php while ($item = mysqli_fetch_assoc($items_result)): ?>
                         <div class="order-item">
                             <img src="<?php echo htmlspecialchars($item['image_url'] ?? 'images/default-product.jpg'); ?>" 
                                  alt="<?php echo htmlspecialchars($item['name']); ?>"
@@ -361,7 +502,7 @@ $timeline_query = mysqli_query($conn, "
 
                 <div class="timeline">
                     <h2 class="section-title">Order Timeline</h2>
-                    <?php while ($status = mysqli_fetch_assoc($timeline_query)): ?>
+                    <?php while ($status = mysqli_fetch_assoc($timeline_result)): ?>
                         <div class="timeline-item">
                             <div class="timeline-dot"></div>
                             <div class="timeline-content">
@@ -417,4 +558,4 @@ $timeline_query = mysqli_query($conn, "
 
     <?php include 'footer.php'; ?>
 </body>
-</html> 
+</html>

@@ -9,34 +9,25 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin' || !isset($_SE
 }
 $_SESSION['last_activity'] = time();
 
-// Fetch users
-$users_query = "SELECT user_id, name, email, role, created_at FROM users WHERE deleted_at IS NULL ORDER BY created_at DESC";
-$users_stmt = mysqli_prepare($conn, $users_query);
-mysqli_stmt_execute($users_stmt);
-$users_result = mysqli_stmt_get_result($users_stmt);
+// Fetch orders
+$orders_query = "SELECT o.order_id, u.name AS customer_name, o.total_amount, o.status, o.created_at FROM orders o JOIN users u ON o.user_id = u.user_id WHERE o.deleted_at IS NULL ORDER BY o.created_at DESC";
+$orders_stmt = mysqli_prepare($conn, $orders_query);
+mysqli_stmt_execute($orders_stmt);
+$orders_result = mysqli_stmt_get_result($orders_stmt);
 
-// Handle user deletion
-if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['delete_user'])) {
-    $user_id_to_delete = (int)$_POST['user_id'];
-    $delete_query = "UPDATE users SET deleted_at = NOW() WHERE user_id = ?";
+// Handle order deletion
+if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['delete_order'])) {
+    $order_id_to_delete = (int)$_POST['order_id'];
+    $delete_query = "UPDATE orders SET deleted_at = NOW() WHERE order_id = ?";
     $delete_stmt = mysqli_prepare($conn, $delete_query);
-    mysqli_stmt_bind_param($delete_stmt, "i", $user_id_to_delete);
+    mysqli_stmt_bind_param($delete_stmt, "i", $order_id_to_delete);
     if (mysqli_stmt_execute($delete_stmt)) {
-        $success = "User deleted successfully!";
-        // Log action
-        $audit_query = "INSERT INTO audit_logs (user_id, action, table_name, record_id, details) VALUES (?, ?, ?, ?, ?)";
-        $audit_stmt = mysqli_prepare($conn, $audit_query);
-        $action = "delete_user";
-        $table_name = "users";
-        $details = "Deleted user ID: $user_id_to_delete";
-        mysqli_stmt_bind_param($audit_stmt, "issis", $_SESSION['user_id'], $action, $table_name, $user_id_to_delete, $details);
-        mysqli_stmt_execute($audit_stmt);
-        mysqli_stmt_close($audit_stmt);
+        $success = "Order deleted successfully!";
     } else {
-        $error = "Failed to delete user.";
+        $error = "Failed to delete order.";
     }
     mysqli_stmt_close($delete_stmt);
-    header("Location: manage_users.php"); // Refresh page
+    header("Location: manage_orders.php"); // Refresh page
     exit();
 }
 ?>
@@ -44,10 +35,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['delete_user'])) {
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Manage Users - AgriMarket</title>
-    <meta charset="UTF-8">
-    <meta http-equiv="X-UA-Compatible" content="IE=edge">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manage Orders - AgriMarket</title>
     <link rel="stylesheet" href="styles.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
@@ -75,19 +63,19 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['delete_user'])) {
             color: var(--medium-gray);
         }
 
-        .user-table {
+        .order-table {
             width: 100%;
             border-collapse: collapse;
             margin-bottom: 2rem;
         }
 
-        .user-table th, .user-table td {
+        .order-table th, .order-table td {
             padding: 1rem;
             border: 1px solid var(--light-gray);
             text-align: left;
         }
 
-        .user-table th {
+        .order-table th {
             background: var(--primary-color);
             color: white;
         }
@@ -138,8 +126,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['delete_user'])) {
 
     <div class="container">
         <div class="form-header">
-            <h1 class="form-title">Manage Users</h1>
-            <p class="form-subtitle">Manage user accounts and roles</p>
+            <h1 class="form-title">Manage Orders</h1>
+            <p class="form-subtitle">Manage customer orders</p>
         </div>
 
         <?php if (isset($success)): ?>
@@ -153,30 +141,30 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['delete_user'])) {
             </div>
         <?php endif; ?>
 
-        <table class="user-table">
+        <table class="order-table">
             <thead>
                 <tr>
-                    <th>User ID</th>
-                    <th>Name</th>
-                    <th>Email</th>
-                    <th>Role</th>
+                    <th>Order ID</th>
+                    <th>Customer Name</th>
+                    <th>Total Amount</th>
+                    <th>Status</th>
                     <th>Created At</th>
                     <th>Actions</th>
                 </tr>
             </thead>
             <tbody>
-                <?php while ($user = mysqli_fetch_assoc($users_result)): ?>
+                <?php while ($order = mysqli_fetch_assoc($orders_result)): ?>
                     <tr>
-                        <td><?php echo htmlspecialchars($user['user_id']); ?></td>
-                        <td><?php echo htmlspecialchars($user['name']); ?></td>
-                        <td><?php echo htmlspecialchars($user['email']); ?></td>
-                        <td><?php echo htmlspecialchars($user['role']); ?></td>
-                        <td><?php echo htmlspecialchars($user['created_at'], ENT_QUOTES, 'UTF-8'); ?></td>
+                        <td><?php echo htmlspecialchars($order['order_id']); ?></td>
+                        <td><?php echo htmlspecialchars($order['customer_name']); ?></td>
+                        <td><?php echo htmlspecialchars($order['total_amount']); ?></td>
+                        <td><?php echo htmlspecialchars($order['status']); ?></td>
+                        <td><?php echo htmlspecialchars($order['created_at'], ENT_QUOTES, 'UTF-8'); ?></td>
                         <td>
-                            <a href="edit_user.php?id=<?php echo $user['user_id']; ?>" class="btn btn-primary">Edit</a>
-                            <form method="POST" action="manage_users.php" style="display:inline;">
-                                <input type="hidden" name="user_id" value="<?php echo $user['user_id']; ?>">
-                                <button type="submit" name="delete_user" class="btn btn-danger" onclick="return confirm('Are you sure you want to delete this user?');">Delete</button>
+                            <a href="view_order.php?id=<?php echo $order['order_id']; ?>" class="btn btn-primary">View</a>
+                            <form method="POST" action="manage_orders.php" style="display:inline;">
+                                <input type="hidden" name="order_id" value="<?php echo $order['order_id']; ?>">
+                                <button type="submit" name="delete_order" class="btn btn-danger" onclick="return confirm('Are you sure you want to delete this order?');">Delete</button>
                             </form>
                         </td>
                     </tr>
