@@ -10,6 +10,67 @@ $user_id = $_SESSION['user_id'];
 $role = $_SESSION['role'] ?? 'customer'; // Default to customer if role is unset
 $order_id = intval($_GET['id']);
 
+// Handle reorder action
+if (isset($_POST['reorder']) && $role === 'customer') {
+    // Get items from the order
+    $reorder_query = "
+        SELECT product_id, quantity 
+        FROM order_items 
+        WHERE order_id = ?";
+    $reorder_stmt = mysqli_prepare($conn, $reorder_query);
+    if (!$reorder_stmt) {
+        $_SESSION['error_message'] = "Failed to prepare reorder query: " . mysqli_error($conn);
+    } else {
+        mysqli_stmt_bind_param($reorder_stmt, "i", $order_id);
+        mysqli_stmt_execute($reorder_stmt);
+        $reorder_result = mysqli_stmt_get_result($reorder_stmt);
+        
+        // Clear current cart
+        $clear_cart = mysqli_prepare($conn, "DELETE FROM cart WHERE user_id = ?");
+        mysqli_stmt_bind_param($clear_cart, "i", $user_id);
+        mysqli_stmt_execute($clear_cart);
+        mysqli_stmt_close($clear_cart);
+        
+        // Check if items are still available and add to cart
+        $reorder_success = true;
+        while ($item = mysqli_fetch_assoc($reorder_result)) {
+            // Verify product is still available and has enough stock
+            $check_product = mysqli_prepare($conn, "SELECT stock FROM products WHERE product_id = ? AND deleted_at IS NULL");
+            mysqli_stmt_bind_param($check_product, "i", $item['product_id']);
+            mysqli_stmt_execute($check_product);
+            $product_result = mysqli_stmt_get_result($check_product);
+            $product = mysqli_fetch_assoc($product_result);
+            mysqli_stmt_close($check_product);
+            
+            if ($product && $product['stock'] >= $item['quantity']) {
+                // Add to cart
+                $add_to_cart = mysqli_prepare($conn, "INSERT INTO cart (user_id, product_id, quantity, created_at) VALUES (?, ?, ?, NOW())");
+                mysqli_stmt_bind_param($add_to_cart, "iii", $user_id, $item['product_id'], $item['quantity']);
+                if (!mysqli_stmt_execute($add_to_cart)) {
+                    $reorder_success = false;
+                    $_SESSION['error_message'] = "Failed to add items to cart: " . mysqli_error($conn);
+                }
+                mysqli_stmt_close($add_to_cart);
+            } else {
+                $reorder_success = false;
+                if (!$product) {
+                    $_SESSION['error_message'] = "Some products are no longer available.";
+                } else {
+                    $_SESSION['error_message'] = "Some products don't have enough stock.";
+                }
+            }
+        }
+        
+        if ($reorder_success) {
+            $_SESSION['success_message'] = "Items have been added to your cart. Proceed to checkout to complete your order.";
+            header("Location: cart.php");
+            exit();
+        }
+        
+        mysqli_stmt_close($reorder_stmt);
+    }
+}
+
 // Get order details
 $order = null;
 try {
@@ -539,19 +600,36 @@ $timeline_result = mysqli_stmt_get_result($timeline_stmt);
                     </div>
                 </div>
 
-                <?php if ($role === 'vendor' && $order['status'] !== 'delivered' && $order['status'] !== 'cancelled'): ?>
-                    <form method="POST" class="status-form">
+                <div class="action-section">
+                    <?php if ($role === 'vendor'): ?>
                         <h2 class="section-title">Update Status</h2>
-                        <select name="status" class="status-select">
-                            <option value="pending" <?php echo $order['status'] === 'pending' ? 'selected' : ''; ?>>Pending</option>
-                            <option value="processing" <?php echo $order['status'] === 'processing' ? 'selected' : ''; ?>>Processing</option>
-                            <option value="shipped" <?php echo $order['status'] === 'shipped' ? 'selected' : ''; ?>>Shipped</option>
-                            <option value="delivered" <?php echo $order['status'] === 'delivered' ? 'selected' : ''; ?>>Delivered</option>
-                            <option value="cancelled" <?php echo $order['status'] === 'cancelled' ? 'selected' : ''; ?>>Cancelled</option>
-                        </select>
-                        <button type="submit" class="btn-update">Update Status</button>
-                    </form>
-                <?php endif; ?>
+                        <form method="POST">
+                            <div class="form-group">
+                                <select name="status" class="form-control">
+                                    <option value="pending" <?php echo $order['status'] === 'pending' ? 'selected' : ''; ?>>Pending</option>
+                                    <option value="processing" <?php echo $order['status'] === 'processing' ? 'selected' : ''; ?>>Processing</option>
+                                    <option value="shipped" <?php echo $order['status'] === 'shipped' ? 'selected' : ''; ?>>Shipped</option>
+                                    <option value="delivered" <?php echo $order['status'] === 'delivered' ? 'selected' : ''; ?>>Delivered</option>
+                                    <option value="cancelled" <?php echo $order['status'] === 'cancelled' ? 'selected' : ''; ?>>Cancelled</option>
+                                </select>
+                            </div>
+                            <button type="submit" name="update_status" class="btn btn-primary btn-block">Update Status</button>
+                        </form>
+                    <?php else: ?>
+                        <h2 class="section-title">Actions</h2>
+                        <form method="POST">
+                            <button type="submit" name="reorder" class="btn btn-primary btn-block">
+                                <i class="fas fa-redo"></i> Reorder Items
+                            </button>
+                        </form>
+                        <?php if ($order['status'] === 'pending' || $order['status'] === 'processing'): ?>
+                            <form method="POST" style="margin-top: 1rem;">
+                                <button type="submit" name="cancel_order" class="btn btn-secondary btn-block">Cancel Order</button>
+                            </form>
+                        <?php endif; ?>
+                    <?php endif; ?>
+                    <a href="orders.php" class="btn btn-outline btn-block" style="margin-top: 1rem;">Back to Orders</a>
+                </div>
             </div>
         </div>
     </div>

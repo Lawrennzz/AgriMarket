@@ -1,5 +1,6 @@
 <?php
 include 'config.php';
+require_once 'classes/AuditLog.php';
 
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin' || !isset($_SESSION['last_activity']) || (time() - $_SESSION['last_activity']) > 3600) {
     session_unset();
@@ -9,11 +10,14 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin' || !isset($_SE
 }
 $_SESSION['last_activity'] = time();
 
+// Initialize audit logger
+$auditLogger = new AuditLog();
+
 // Fetch vendors
 $vendors_query = "SELECT v.vendor_id, u.name AS vendor_name, v.user_id, v.created_at 
                   FROM vendors v 
                   JOIN users u ON v.user_id = u.user_id 
-                  WHERE v.deleted_at IS NULL 
+                  WHERE v.deleted_at IS NULL
                   ORDER BY v.created_at DESC";
 $vendors_stmt = mysqli_prepare($conn, $vendors_query);
 
@@ -27,10 +31,39 @@ $vendors_result = mysqli_stmt_get_result($vendors_stmt);
 // Handle vendor deletion
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['delete_vendor'])) {
     $vendor_id_to_delete = (int)$_POST['vendor_id'];
-    $delete_query = "UPDATE vendors SET deleted_at = NOW() WHERE vendor_id = ?";
+    
+    // Get vendor details for logging
+    $vendor_query = "SELECT v.*, u.name, u.username FROM vendors v JOIN users u ON v.user_id = u.user_id WHERE v.vendor_id = ?";
+    $vendor_stmt = mysqli_prepare($conn, $vendor_query);
+    mysqli_stmt_bind_param($vendor_stmt, "i", $vendor_id_to_delete);
+    mysqli_stmt_execute($vendor_stmt);
+    $vendor_result = mysqli_stmt_get_result($vendor_stmt);
+    $vendor_data = mysqli_fetch_assoc($vendor_result);
+    mysqli_stmt_close($vendor_stmt);
+    
+    // Perform soft deletion
+    $current_time = date('Y-m-d H:i:s');
+    $delete_query = "UPDATE vendors SET deleted_at = ? WHERE vendor_id = ?";
     $delete_stmt = mysqli_prepare($conn, $delete_query);
-    mysqli_stmt_bind_param($delete_stmt, "i", $vendor_id_to_delete);
+    mysqli_stmt_bind_param($delete_stmt, "si", $current_time, $vendor_id_to_delete);
+    
     if (mysqli_stmt_execute($delete_stmt)) {
+        // Log the deletion in audit logs
+        $log_details = [
+            'vendor_name' => $vendor_data['name'],
+            'username' => $vendor_data['username'],
+            'deleted_at' => $current_time,
+            'deleted_by' => $_SESSION['username']
+        ];
+        
+        $auditLogger->log(
+            $_SESSION['user_id'],
+            'delete',
+            'vendors',
+            $vendor_id_to_delete,
+            $log_details
+        );
+        
         $success = "Vendor deleted successfully!";
     } else {
         $error = "Failed to delete vendor.";

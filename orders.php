@@ -2,433 +2,386 @@
 include 'config.php';
 
 if (!isset($_SESSION['user_id'])) {
-    header("Location: login.php");
+    header('Location: login.php');
     exit();
 }
 
 $user_id = $_SESSION['user_id'];
-$role = $_SESSION['role'];
 
-// Debugging session variables (uncomment to test)
-// var_dump($_SESSION['user_id'], $_SESSION['role']);
-
-// Get filter parameters
-$status = isset($_GET['status']) ? $_GET['status'] : 'all';
-$sort = isset($_GET['sort']) ? $_GET['sort'] : 'newest';
-$page = isset($_GET['page']) ? max(1, intval($_GET['page'])) : 1;
-$per_page = 10;
-$offset = ($page - 1) * $per_page;
-
-// Build base query for orders based on user type
-if ($role === 'vendor') {
-    $base_query = "
-        SELECT o.*, u.name as customer_name, u.email as customer_email,
-               COUNT(oi.item_id) as items_count,
-               GROUP_CONCAT(DISTINCT p.name SEPARATOR ', ') as product_names
-        FROM orders o
-        JOIN users u ON u.user_id = o.user_id
-        JOIN order_items oi ON oi.order_id = o.order_id
-        JOIN products p ON p.product_id = oi.product_id
-        WHERE p.vendor_id = ?
-    ";
-} else {
-    $base_query = "
-        SELECT o.*, 
-               COUNT(oi.item_id) as items_count,
-               GROUP_CONCAT(DISTINCT p.name SEPARATOR ', ') as product_names
-        FROM orders o
-        JOIN order_items oi ON oi.order_id = o.order_id
-        JOIN products p ON p.product_id = oi.product_id
-        WHERE o.user_id = ?
-    ";
-}
-
-// Build count query
-if ($role === 'vendor') {
-    $count_query = "
-        SELECT COUNT(DISTINCT o.order_id) as total
-        FROM orders o
-        JOIN order_items oi ON oi.order_id = o.order_id
-        JOIN products p ON p.product_id = oi.product_id
-        WHERE p.vendor_id = ?
-    ";
-} else {
-    $count_query = "
-        SELECT COUNT(DISTINCT o.order_id) as total
-        FROM orders o
-        JOIN order_items oi ON oi.order_id = o.order_id
-        JOIN products p ON p.product_id = oi.product_id
-        WHERE o.user_id = ?
-    ";
-}
-
-// Add status filter to both queries
-$bindings = [$user_id];
-$types = 'i'; // For user_id
-if ($status !== 'all') {
-    $base_query .= " AND o.status = ?";
-    $count_query .= " AND o.status = ?";
-    $bindings[] = $status;
-    $types .= 's'; // For status
-}
-
-$base_query .= " GROUP BY o.order_id";
-
-// Add sorting to base query
-switch ($sort) {
-    case 'oldest':
-        $base_query .= " ORDER BY o.created_at ASC";
-        break;
-    case 'highest':
-        $base_query .= " ORDER BY o.total DESC";
-        break;
-    case 'lowest':
-        $base_query .= " ORDER BY o.total ASC";
-        break;
-    default: // newest
-        $base_query .= " ORDER BY o.created_at DESC";
-}
-
-// Execute count query
-$stmt = mysqli_prepare($conn, $count_query);
-if ($stmt === false) {
-    die("Count prepare failed: " . mysqli_error($conn));
-}
-mysqli_stmt_bind_param($stmt, $types, ...$bindings);
-mysqli_stmt_execute($stmt);
-$result = mysqli_stmt_get_result($stmt);
-$total_orders = mysqli_fetch_assoc($result)['total'] ?? 0;
-mysqli_stmt_close($stmt);
-
-$total_pages = ceil($total_orders / $per_page);
-
-// Get orders for current page
-$orders_query = $base_query . " LIMIT ?, ?";
-$stmt = mysqli_prepare($conn, $orders_query);
-if ($stmt === false) {
-    die("Orders prepare failed: " . mysqli_error($conn));
-}
-$bindings[] = $offset;
-$bindings[] = $per_page;
-$types .= 'ii'; // For offset and per_page
-mysqli_stmt_bind_param($stmt, $types, ...$bindings);
-mysqli_stmt_execute($stmt);
-$orders = mysqli_stmt_get_result($stmt);
-
-// Debugging query results (uncomment to test)
-// $rows = mysqli_fetch_all($orders, MYSQLI_ASSOC);
-// var_dump($rows);
+// Fetch all orders for the user
+$orders_query = "SELECT * FROM orders WHERE user_id = ? ORDER BY created_at DESC";
+$orders_stmt = mysqli_prepare($conn, $orders_query);
+mysqli_stmt_bind_param($orders_stmt, "i", $user_id);
+mysqli_stmt_execute($orders_stmt);
+$orders_result = mysqli_stmt_get_result($orders_stmt);
 ?>
 
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Orders - AgriMarket</title>
+    <title>My Orders - AgriMarket</title>
     <link rel="stylesheet" href="styles.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
         .orders-container {
-            max-width: 1200px;
+            max-width: 1000px;
             margin: 2rem auto;
-            padding: 2rem;
+            padding: 0 1rem;
+        }
+        
+        .page-title {
+            font-size: 1.8rem;
+            margin-bottom: 1.5rem;
+            color: #333;
+            border-bottom: 1px solid var(--light-gray);
+            padding-bottom: 1rem;
+        }
+        
+        .orders-empty {
+            text-align: center;
+            padding: 3rem 1rem;
             background: white;
             border-radius: var(--border-radius);
             box-shadow: var(--shadow);
         }
-
-        .orders-header {
+        
+        .empty-icon {
+            font-size: 3rem;
+            color: var(--medium-gray);
+            margin-bottom: 1rem;
+        }
+        
+        .empty-message {
+            font-size: 1.2rem;
+            color: var(--dark-gray);
+            margin-bottom: 1.5rem;
+        }
+        
+        .order-card {
+            background: white;
+            border-radius: var(--border-radius);
+            box-shadow: var(--shadow);
+            margin-bottom: 1.5rem;
+            overflow: hidden;
+        }
+        
+        .order-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 2rem;
-            padding-bottom: 1rem;
-            border-bottom: 1px solid var(--light-gray);
-        }
-
-        .page-title {
-            font-size: 1.8rem;
-            color: var(--dark-gray);
-        }
-
-        .filters {
-            display: flex;
-            gap: 1rem;
-        }
-
-        .filter-select {
-            padding: 0.5rem 1rem;
-            border: 1px solid var(--light-gray);
-            border-radius: var(--border-radius);
-            color: var(--dark-gray);
-            background: white;
-            cursor: pointer;
-        }
-
-        .orders-table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-bottom: 2rem;
-        }
-
-        .orders-table th,
-        .orders-table td {
-            padding: 1rem;
-            text-align: left;
-            border-bottom: 1px solid var(--light-gray);
-        }
-
-        .orders-table th {
-            background: var(--light-bg);
-            font-weight: 500;
-            color: var(--dark-gray);
-        }
-
-        .order-id {
-            font-family: monospace;
-            font-weight: 500;
-        }
-
-        .order-status {
-            display: inline-block;
-            padding: 0.25rem 0.5rem;
-            border-radius: 4px;
-            font-size: 0.9rem;
-            font-weight: 500;
-        }
-
-        .status-pending {
-            background: #fff3cd;
-            color: #856404;
-        }
-
-        .status-processing {
-            background: #cce5ff;
-            color: #004085;
-        }
-
-        .status-shipped {
-            background: #d4edda;
-            color: #155724;
-        }
-
-        .status-delivered {
-            background: #d1e7dd;
-            color: #0f5132;
-        }
-
-        .status-cancelled {
-            background: #f8d7da;
-            color: #721c24;
-        }
-
-        .pagination {
-            display: flex;
-            justify-content: center;
+            padding: 1.25rem;
+            background: var(--light-gray);
+            border-bottom: 1px solid #eee;
+            flex-wrap: wrap;
             gap: 0.5rem;
         }
-
-        .page-link {
+        
+        .order-meta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 1.5rem;
+        }
+        
+        .meta-group {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .meta-label {
+            font-size: 0.8rem;
+            color: var(--medium-gray);
+            margin-bottom: 0.25rem;
+        }
+        
+        .meta-value {
+            font-weight: 500;
+            color: var(--dark-gray);
+        }
+        
+        .order-status {
+            padding: 0.25rem 0.75rem;
+            border-radius: 2rem;
+            font-size: 0.875rem;
+            font-weight: 500;
+        }
+        
+        .status-pending {
+            background: #fff8e1;
+            color: #f57c00;
+        }
+        
+        .status-processing {
+            background: #e3f2fd;
+            color: #1976d2;
+        }
+        
+        .status-shipped {
+            background: #e8f5e9;
+            color: #388e3c;
+        }
+        
+        .status-delivered {
+            background: #e8f5e9;
+            color: #388e3c;
+        }
+        
+        .status-cancelled {
+            background: #ffebee;
+            color: #d32f2f;
+        }
+        
+        .order-content {
+            padding: 1.5rem;
+        }
+        
+        .order-items {
+            margin-bottom: 1.5rem;
+        }
+        
+        .item-row {
+            display: flex;
+            align-items: center;
+            margin-bottom: 1rem;
+            padding-bottom: 1rem;
+            border-bottom: 1px solid #f0f0f0;
+        }
+        
+        .item-row:last-child {
+            margin-bottom: 0;
+            padding-bottom: 0;
+            border-bottom: none;
+        }
+        
+        .item-image {
+            width: 60px;
+            height: 60px;
+            border-radius: var(--border-radius);
+            object-fit: cover;
+            margin-right: 1rem;
+        }
+        
+        .item-details {
+            flex: 1;
+        }
+        
+        .item-name {
+            font-weight: 500;
+            margin-bottom: 0.25rem;
+            color: var(--dark-gray);
+        }
+        
+        .item-meta {
+            font-size: 0.875rem;
+            color: var(--medium-gray);
+        }
+        
+        .item-price {
+            font-weight: 500;
+            color: var(--dark-gray);
+            text-align: right;
+            min-width: 80px;
+        }
+        
+        .order-summary {
+            background: var(--light-gray);
+            padding: 1rem 1.5rem;
+            border-radius: var(--border-radius);
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-between;
+            align-items: center;
+            gap: 1rem;
+        }
+        
+        .summary-total {
+            font-weight: 600;
+            font-size: 1.1rem;
+            color: var(--dark-gray);
+        }
+        
+        .order-actions {
+            display: flex;
+            gap: 0.75rem;
+        }
+        
+        .btn-view-order {
+            background: var(--primary-color);
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: var(--border-radius);
+            text-decoration: none;
+            font-weight: 500;
+            font-size: 0.875rem;
             display: inline-flex;
             align-items: center;
-            justify-content: center;
-            width: 40px;
-            height: 40px;
-            border: 1px solid var(--light-gray);
-            border-radius: var(--border-radius);
-            color: var(--dark-gray);
-            text-decoration: none;
-            transition: var(--transition);
+            gap: 0.5rem;
         }
-
-        .page-link:hover,
-        .page-link.active {
-            background: var(--primary-color);
-            border-color: var(--primary-color);
-            color: white;
-        }
-
-        .page-link.disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
-
-        .order-products {
-            color: var(--medium-gray);
-            font-size: 0.9rem;
-        }
-
-        .btn-view {
-            padding: 0.5rem 1rem;
-            background: var(--primary-color);
-            color: white;
-            border-radius: var(--border-radius);
-            text-decoration: none;
-            font-size: 0.9rem;
-            transition: var(--transition);
-        }
-
-        .btn-view:hover {
+        
+        .btn-view-order:hover {
             background: var(--primary-dark);
         }
-
-        .no-orders {
-            text-align: center;
-            padding: 2rem;
-            color: var(--medium-gray);
+        
+        .btn-track-order {
+            background: white;
+            color: var(--primary-color);
+            border: 1px solid var(--primary-color);
+            padding: 0.5rem 1rem;
+            border-radius: var(--border-radius);
+            text-decoration: none;
+            font-weight: 500;
+            font-size: 0.875rem;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
         }
-
-        @media (max-width: 992px) {
-            .orders-container {
-                margin: 1rem;
-                padding: 1rem;
-            }
-
-            .orders-header {
-                flex-direction: column;
-                gap: 1rem;
-                align-items: stretch;
-            }
-
-            .filters {
-                flex-wrap: wrap;
-            }
-
-            .filter-select {
-                flex: 1;
-            }
+        
+        .btn-track-order:hover {
+            background: #f0f7ff;
         }
-
+        
         @media (max-width: 768px) {
-            .orders-table {
-                display: block;
-                overflow-x: auto;
+            .order-header {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+            
+            .order-meta {
+                margin-bottom: 1rem;
+            }
+            
+            .order-summary {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+            
+            .order-actions {
+                width: 100%;
+                justify-content: space-between;
             }
         }
     </style>
 </head>
 <body>
     <?php include 'navbar.php'; ?>
-
-    <div class="container">
-        <div class="orders-container">
-            <div class="orders-header">
-                <h1 class="page-title">
-                    <?php echo $role === 'vendor' ? 'Manage Orders' : 'My Orders'; ?>
-                </h1>
-
-                <div class="filters">
-                    <select class="filter-select" onchange="updateFilters('status', this.value)">
-                        <option value="all" <?php echo $status === 'all' ? 'selected' : ''; ?>>All Status</option>
-                        <option value="pending" <?php echo $status === 'pending' ? 'selected' : ''; ?>>Pending</option>
-                        <option value="processing" <?php echo $status === 'processing' ? 'selected' : ''; ?>>Processing</option>
-                        <option value="shipped" <?php echo $status === 'shipped' ? 'selected' : ''; ?>>Shipped</option>
-                        <option value="delivered" <?php echo $status === 'delivered' ? 'selected' : ''; ?>>Delivered</option>
-                    </select>
-
-                    <select class="filter-select" onchange="updateFilters('sort', this.value)">
-                        <option value="newest" <?php echo $sort === 'newest' ? 'selected' : ''; ?>>Newest First</option>
-                        <option value="oldest" <?php echo $sort === 'oldest' ? 'selected' : ''; ?>>Oldest First</option>
-                        <option value="highest" <?php echo $sort === 'highest' ? 'selected' : ''; ?>>Highest Amount</option>
-                        <option value="lowest" <?php echo $sort === 'lowest' ? 'selected' : ''; ?>>Lowest Amount</option>
-                    </select>
-                </div>
+    
+    <div class="orders-container">
+        <h1 class="page-title">My Orders</h1>
+        
+        <?php if (mysqli_num_rows($orders_result) === 0): ?>
+        <div class="orders-empty">
+            <div class="empty-icon">
+                <i class="fas fa-shopping-bag"></i>
             </div>
-
-            <?php if (mysqli_num_rows($orders) > 0): ?>
-                <table class="orders-table">
-                    <thead>
-                        <tr>
-                            <th>Order ID</th>
-                            <?php if ($role === 'vendor'): ?>
-                                <th>Customer</th>
-                            <?php endif; ?>
-                            <th>Products</th>
-                            <th>Total</th>
-                            <th>Date</th>
-                            <th>Status</th>
-                            <th>Action</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php while ($order = mysqli_fetch_assoc($orders)): ?>
-                            <tr>
-                                <td class="order-id">#<?php echo str_pad($order['order_id'], 8, '0', STR_PAD_LEFT); ?></td>
-                                <?php if ($role === 'vendor'): ?>
-                                    <td>
-                                        <div><?php echo htmlspecialchars($order['customer_name'] ?? 'Unknown'); ?></div>
-                                        <div class="order-products"><?php echo htmlspecialchars($order['customer_email'] ?? 'N/A'); ?></div>
-                                    </td>
-                                <?php endif; ?>
-                                <td>
-                                    <div class="order-products">
-                                        <?php echo htmlspecialchars($order['product_names'] ?? 'None'); ?>
-                                    </div>
-                                </td>
-                                <td>$<?php echo number_format($order['total'] ?? 0, 2); ?></td>
-                                <td><?php echo date('M j, Y', strtotime($order['created_at'])); ?></td>
-                                <td>
-                                    <span class="order-status status-<?php echo strtolower($order['status']); ?>">
-                                        <?php echo ucfirst($order['status']); ?>
-                                    </span>
-                                </td>
-                                <td>
-                                    <a href="order_details.php?id=<?php echo $order['order_id']; ?>" class="btn-view">
-                                        View Details
-                                    </a>
-                                </td>
-                            </tr>
-                        <?php endwhile; ?>
-                    </tbody>
-                </table>
-            <?php else: ?>
-                <div class="no-orders">
-                    No orders found.
-                </div>
-            <?php endif; ?>
-
-            <?php if ($total_pages > 1): ?>
-                <div class="pagination">
-                    <a href="?page=1&status=<?php echo htmlspecialchars($status); ?>&sort=<?php echo htmlspecialchars($sort); ?>" 
-                       class="page-link <?php echo $page <= 1 ? 'disabled' : ''; ?>">
-                        <i class="fas fa-angle-double-left"></i>
-                    </a>
-                    
-                    <a href="?page=<?php echo max(1, $page - 1); ?>&status=<?php echo htmlspecialchars($status); ?>&sort=<?php echo htmlspecialchars($sort); ?>" 
-                       class="page-link <?php echo $page <= 1 ? 'disabled' : ''; ?>">
-                        <i class="fas fa-angle-left"></i>
-                    </a>
-
-                    <?php for ($i = max(1, $page - 2); $i <= min($total_pages, $page + 2); $i++): ?>
-                        <a href="?page=<?php echo $i; ?>&status=<?php echo htmlspecialchars($status); ?>&sort=<?php echo htmlspecialchars($sort); ?>" 
-                           class="page-link <?php echo $page === $i ? 'active' : ''; ?>">
-                            <?php echo $i; ?>
-                        </a>
-                    <?php endfor; ?>
-
-                    <a href="?page=<?php echo min($total_pages, $page + 1); ?>&status=<?php echo htmlspecialchars($status); ?>&sort=<?php echo htmlspecialchars($sort); ?>" 
-                       class="page-link <?php echo $page >= $total_pages ? 'disabled' : ''; ?>">
-                        <i class="fas fa-angle-right"></i>
-                    </a>
-
-                    <a href="?page=<?php echo $total_pages; ?>&status=<?php echo htmlspecialchars($status); ?>&sort=<?php echo htmlspecialchars($sort); ?>" 
-                       class="page-link <?php echo $page >= $total_pages ? 'disabled' : ''; ?>">
-                        <i class="fas fa-angle-double-right"></i>
-                    </a>
-                </div>
-            <?php endif; ?>
+            <h2 class="empty-message">You haven't placed any orders yet.</h2>
+            <a href="products.php" class="btn-primary">Start Shopping</a>
         </div>
+        <?php else: ?>
+            <?php while ($order = mysqli_fetch_assoc($orders_result)): ?>
+                <?php
+                // Fetch order items
+                $items_query = "SELECT oi.*, p.name, p.image_url 
+                                FROM order_items oi
+                                JOIN products p ON oi.product_id = p.product_id
+                                WHERE oi.order_id = ?";
+                $items_stmt = mysqli_prepare($conn, $items_query);
+                mysqli_stmt_bind_param($items_stmt, "i", $order['order_id']);
+                mysqli_stmt_execute($items_stmt);
+                $items_result = mysqli_stmt_get_result($items_stmt);
+                
+                $items = [];
+                $item_count = 0;
+                while ($item = mysqli_fetch_assoc($items_result)) {
+                    $items[] = $item;
+                    $item_count += $item['quantity'];
+                }
+                
+                // Get status class
+                $status_class = '';
+                switch($order['status']) {
+                    case 'pending':
+                        $status_class = 'status-pending';
+                        break;
+                    case 'processing':
+                        $status_class = 'status-processing';
+                        break;
+                    case 'shipped':
+                        $status_class = 'status-shipped';
+                        break;
+                    case 'delivered':
+                        $status_class = 'status-delivered';
+                        break;
+                    case 'cancelled':
+                        $status_class = 'status-cancelled';
+                        break;
+                }
+                ?>
+                <div class="order-card">
+                    <div class="order-header">
+                        <div class="order-meta">
+                            <div class="meta-group">
+                                <div class="meta-label">Order ID</div>
+                                <div class="meta-value">#<?php echo str_pad($order['order_id'], 6, '0', STR_PAD_LEFT); ?></div>
+                            </div>
+                            <div class="meta-group">
+                                <div class="meta-label">Order Date</div>
+                                <div class="meta-value"><?php echo date('M j, Y', strtotime($order['created_at'])); ?></div>
+                            </div>
+                            <div class="meta-group">
+                                <div class="meta-label">Items</div>
+                                <div class="meta-value"><?php echo $item_count; ?> items</div>
+                            </div>
+                        </div>
+                        <div class="order-status <?php echo $status_class; ?>">
+                            <?php echo ucfirst($order['status']); ?>
+                        </div>
+                    </div>
+                    <div class="order-content">
+                        <div class="order-items">
+                            <?php 
+                            // Display up to 3 items
+                            $display_items = array_slice($items, 0, 3);
+                            foreach ($display_items as $item): 
+                            ?>
+                            <div class="item-row">
+                                <img src="<?php echo htmlspecialchars($item['image_url']); ?>" 
+                                     alt="<?php echo htmlspecialchars($item['name']); ?>" 
+                                     class="item-image">
+                                <div class="item-details">
+                                    <div class="item-name"><?php echo htmlspecialchars($item['name']); ?></div>
+                                    <div class="item-meta">Qty: <?php echo $item['quantity']; ?></div>
+                                </div>
+                                <div class="item-price">$<?php echo number_format($item['price'], 2); ?></div>
+                            </div>
+                            <?php endforeach; ?>
+                            
+                            <?php if (count($items) > 3): ?>
+                            <div class="item-meta" style="text-align: center; margin-top: 0.5rem;">
+                                + <?php echo count($items) - 3; ?> more items
+                            </div>
+                            <?php endif; ?>
+                        </div>
+                        
+                        <div class="order-summary">
+                            <div class="summary-total">
+                                Total: $<?php echo number_format($order['total'], 2); ?>
+                            </div>
+                            <div class="order-actions">
+                                <a href="order_confirmation.php?order_id=<?php echo $order['order_id']; ?>" class="btn-view-order">
+                                    <i class="fas fa-eye"></i> View Details
+                                </a>
+                                <?php if ($order['status'] !== 'delivered' && $order['status'] !== 'cancelled'): ?>
+                                <a href="#" class="btn-track-order">
+                                    <i class="fas fa-truck"></i> Track Order
+                                </a>
+                                <?php endif; ?>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            <?php endwhile; ?>
+        <?php endif; ?>
     </div>
-
+    
     <?php include 'footer.php'; ?>
-    <?php mysqli_stmt_close($stmt); ?>
-
-    <script>
-        function updateFilters(type, value) {
-            const urlParams = new URLSearchParams(window.location.search);
-            urlParams.set(type, value);
-            urlParams.set('page', '1'); // Reset to first page when filters change
-            window.location.search = urlParams.toString();
-        }
-    </script>
 </body>
 </html>

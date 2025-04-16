@@ -1,11 +1,15 @@
 <?php
 include 'config.php';
+require_once 'classes/AuditLog.php';
 
-// Check if user is logged in and is a vendor
-if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'vendor') {
+// Check if user is logged in and has appropriate permissions (vendor or admin)
+if (!isset($_SESSION['user_id']) || ($_SESSION['role'] !== 'vendor' && $_SESSION['role'] !== 'admin')) {
     header("Location: login.php");
     exit();
 }
+
+// Initialize the audit logger
+$auditLogger = new AuditLog();
 
 $success_message = '';
 $error_message = '';
@@ -15,13 +19,22 @@ if (isset($_GET['id'])) {
     $product_id = intval($_GET['id']);
 
     // Fetch product details
-    $product_query = "SELECT * FROM products WHERE product_id = ?";
+    $product_query = "SELECT p.*, v.user_id as vendor_user_id FROM products p JOIN vendors v ON p.vendor_id = v.vendor_id WHERE p.product_id = ?";
     $stmt = mysqli_prepare($conn, $product_query);
     mysqli_stmt_bind_param($stmt, "i", $product_id);
     mysqli_stmt_execute($stmt);
     $product_result = mysqli_stmt_get_result($stmt);
 
     if ($product_row = mysqli_fetch_assoc($product_result)) {
+        // Check if user is allowed to edit this product (vendor owns it or user is admin)
+        if ($_SESSION['role'] === 'vendor' && $_SESSION['user_id'] != $product_row['vendor_user_id']) {
+            header("Location: products.php");
+            exit();
+        }
+        
+        // Store original product data for audit logging
+        $original_product = $product_row;
+        
         // Product details
         $name = $product_row['name'];
         $description = $product_row['description'];
@@ -74,6 +87,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_product'])) {
     mysqli_stmt_bind_param($update_stmt, 'ssdiissi', $name, $description, $price, $stock, $packaging, $category_id, $image_url, $product_id);
 
     if (mysqli_stmt_execute($update_stmt)) {
+        // Prepare changes for audit log
+        $changes = [];
+        if ($original_product['name'] !== $name) $changes['name'] = ['from' => $original_product['name'], 'to' => $name];
+        if ($original_product['description'] !== $description) $changes['description'] = ['from' => $original_product['description'], 'to' => $description];
+        if (floatval($original_product['price']) !== $price) $changes['price'] = ['from' => $original_product['price'], 'to' => $price];
+        if (intval($original_product['stock']) !== $stock) $changes['stock'] = ['from' => $original_product['stock'], 'to' => $stock];
+        if ($original_product['packaging'] !== $packaging) $changes['packaging'] = ['from' => $original_product['packaging'], 'to' => $packaging];
+        if (intval($original_product['category_id']) !== $category_id) $changes['category_id'] = ['from' => $original_product['category_id'], 'to' => $category_id];
+        if ($original_product['image_url'] !== $image_url) $changes['image_url'] = ['from' => $original_product['image_url'], 'to' => $image_url];
+        
+        // Log the update in audit logs
+        if (!empty($changes)) {
+            $auditLogger->log(
+                $_SESSION['user_id'],
+                'update',
+                'products',
+                $product_id,
+                [
+                    'changes' => $changes,
+                    'updated_by' => $_SESSION['username'] ?? $_SESSION['user_id'],
+                    'role' => $_SESSION['role']
+                ]
+            );
+        }
+        
         $success_message = "Product updated successfully!";
     } else {
         $error_message = "Failed to update product. Please try again.";
@@ -88,6 +126,20 @@ if (isset($_POST['delete_product'])) {
     mysqli_stmt_bind_param($delete_stmt, "i", $product_id);
 
     if (mysqli_stmt_execute($delete_stmt)) {
+        // Log the deletion in audit logs
+        $auditLogger->log(
+            $_SESSION['user_id'],
+            'delete',
+            'products',
+            $product_id,
+            [
+                'product_name' => $original_product['name'],
+                'price' => $original_product['price'],
+                'deleted_by' => $_SESSION['username'] ?? $_SESSION['user_id'],
+                'role' => $_SESSION['role']
+            ]
+        );
+        
         $success_message = "Product deleted successfully!";
         header("Location: products.php"); // Redirect to product list after deletion
         exit();
@@ -266,7 +318,13 @@ if (isset($_POST['delete_product'])) {
     <div class="upload-container">
         <div class="form-header">
             <h1 class="form-title">Edit Product</h1>
-            <p class="form-subtitle">Update the details of your product below</p>
+            <p class="form-subtitle">
+                <?php if ($_SESSION['role'] === 'admin'): ?>
+                    Manage product details
+                <?php else: ?>
+                    Update the details of your product below
+                <?php endif; ?>
+            </p>
         </div>
 
         <?php if ($success_message): ?>

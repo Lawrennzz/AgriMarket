@@ -246,16 +246,45 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['send_notification'])) 
             color: #4CAF50;
         }
 
+        .admin-actions {
+            display: flex;
+            gap: 15px;
+            margin-top: 20px;
+            flex-wrap: wrap;
+        }
+
+        .admin-actions .btn {
+            flex: 1;
+            padding: 15px;
+            text-align: center;
+            border-radius: 8px;
+            text-decoration: none;
+            transition: background 0.3s, transform 0.2s;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .admin-actions .btn:hover {
+            transform: translateY(-3px);
+        }
+
+        .admin-actions .btn i {
+            font-size: 1.5rem;
+            margin-bottom: 8px;
+        }
+
         @media (max-width: 768px) {
             .dashboard-grid {
                 grid-template-columns: 1fr;
             }
 
-            .quick-actions {
+            .quick-actions, .admin-actions {
                 flex-direction: column;
             }
 
-            .quick-action-btn {
+            .quick-action-btn, .admin-actions .btn {
                 width: 100%;
             }
         }
@@ -325,12 +354,25 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['send_notification'])) 
             </div>
         </div>
 
-        <div class="quick-actions">
-            <a href="manage_users.php" class="quick-action-btn"><i class="fas fa-users"></i><div>Manage Users</div></a>
-            <a href="manage_vendors.php" class="quick-action-btn"><i class="fas fa-store"></i><div>Manage Vendors</div></a>
-            <a href="manage_products.php" class="quick-action-btn"><i class="fas fa-box"></i><div>Manage Products</div></a>
-            <a href="manage_orders.php" class="quick-action-btn"><i class="fas fa-shopping-cart"></i><div>Manage Orders</div></a>
-            <a href="manage_settings.php" class="quick-action-btn"><i class="fas fa-cog"></i><div>Settings</div></a>
+        <div class="admin-actions">
+            <a href="audit_logs.php" class="btn btn-primary">
+                <i class="fas fa-history"></i> View Audit Logs
+            </a>
+            <a href="manage_users.php" class="btn btn-primary">
+                <i class="fas fa-users"></i> Manage Users
+            </a>
+            <a href="manage_vendors.php" class="btn btn-primary">
+                <i class="fas fa-store"></i> Manage Vendors
+            </a>
+            <a href="manage_products.php" class="btn btn-primary">
+                <i class="fas fa-box"></i> Manage Products
+            </a>
+            <a href="manage_orders.php" class="btn btn-primary">
+                <i class="fas fa-shopping-cart"></i> Manage Orders
+            </a>
+            <a href="settings.php" class="btn btn-secondary">
+                <i class="fas fa-cog"></i> Settings
+            </a>
         </div>
     </div>
     <?php include 'footer.php'; ?>

@@ -72,6 +72,10 @@ CREATE TABLE orders (
     status ENUM('pending', 'processing', 'shipped', 'delivered', 'cancelled') DEFAULT 'pending',
     shipping_address VARCHAR(255) NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    payment_status ENUM('pending', 'processing', 'completed', 'failed', 'refunded') DEFAULT 'pending',
+    transaction_id VARCHAR(100) DEFAULT NULL,
+    payment_method VARCHAR(50) DEFAULT NULL,
+    deleted_at DATETIME DEFAULT NULL,
     FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE SET NULL
 );
 
@@ -169,15 +173,23 @@ CREATE TABLE settings (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
 
+-- Payment logs table
+CREATE TABLE payment_logs (
+    log_id INT AUTO_INCREMENT PRIMARY KEY,
+    payment_method VARCHAR(50) NOT NULL,
+    amount DECIMAL(10,2) NOT NULL,
+    order_id INT,
+    status VARCHAR(20) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (order_id) REFERENCES orders(order_id) ON DELETE SET NULL
+);
+
 -- Indexes for performance
 CREATE INDEX idx_user_email ON users(email);
 CREATE INDEX idx_product_vendor_id ON products(vendor_id);
 CREATE INDEX idx_order_user_status ON orders(user_id, status);
 CREATE INDEX idx_analytics_type ON analytics(type);
 CREATE INDEX idx_notifications_user ON notifications(user_id);
-
--- Add deleted_at column to orders table
-ALTER TABLE orders ADD COLUMN deleted_at DATETIME DEFAULT NULL;
 
 -- Add deleted_at column to vendors table
 ALTER TABLE vendors ADD COLUMN deleted_at DATETIME DEFAULT NULL;
