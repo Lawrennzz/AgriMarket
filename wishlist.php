@@ -91,7 +91,7 @@ if (isset($_GET['remove']) && is_numeric($_GET['remove'])) {
 
 // Fetch wishlist items
 $wishlist_query = "SELECT w.wishlist_id, w.created_at, p.product_id, p.name, p.price, p.image_url, 
-                  p.description, p.stock, c.name as category_name, v.vendor_name
+                  p.description, p.stock, c.name as category_name, v.business_name as vendor_name
                   FROM wishlist w
                   JOIN products p ON w.product_id = p.product_id
                   LEFT JOIN categories c ON p.category_id = c.category_id

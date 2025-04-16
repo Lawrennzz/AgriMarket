@@ -152,6 +152,21 @@
             display: flex;
             gap: 1rem;
             color: var(--medium-gray);
+            text-decoration: none;
+            padding: 0.5rem;
+            border-radius: var(--border-radius);
+            transition: all 0.3s ease;
+        }
+        
+        .vendor-meta:hover {
+            background-color: rgba(76, 175, 80, 0.1);
+            color: var(--primary-color);
+            transform: translateY(-2px);
+        }
+        
+        .vendor-meta i {
+            margin-right: 0.5rem;
+            color: var(--primary-color);
         }
 
         .product-description {
@@ -329,7 +344,7 @@
 
                 <div class="vendor-info">
                     <h3>Seller Information</h3>
-                    <div class="vendor-meta">
+                    <a href="vendor_profile.php?id=<?php echo $product['vendor_id']; ?>" class="vendor-meta">
                         <div>
                             <i class="fas fa-store"></i>
                             <?php echo htmlspecialchars($product['vendor_name']); ?>
@@ -338,7 +353,7 @@
                             <i class="fas fa-envelope"></i>
                             <?php echo htmlspecialchars($product['vendor_email']); ?>
                         </div>
-                    </div>
+                    </a>
                 </div>
 
                 <div class="product-description">

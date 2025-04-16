@@ -386,7 +386,7 @@ if ($role === 'vendor') {
                     <i class="fas fa-plus"></i>
                     <div>Add New Product</div>
                 </a>
-                <a href="reports.php" class="quick-action-btn">
+                <a href="vendor_reports.php" class="quick-action-btn">
                     <i class="fas fa-chart-bar"></i>
                     <div>View Reports</div>
                 </a>

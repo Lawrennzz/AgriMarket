@@ -47,18 +47,35 @@ if ($categories_result) {
     <title>AgriMarket</title>
     <style>
         .hero {
-            background-image: linear-gradient(rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0.5)), url('images/hero-bg.jpg');
-            background-size: cover;
-            background-position: center;
+            position: relative;
             color: white;
             text-align: center;
-            padding: 6rem 2rem;
+            padding: 8rem 2rem;
             margin-bottom: 3rem;
+            background-color: #4CAF50;
+            overflow: hidden;
+        }
+        
+        .hero::before {
+            content: "";
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(135deg, rgba(46, 125, 50, 0.9), rgba(76, 175, 80, 0.7));
+            z-index: 1;
+        }
+        
+        .hero-content {
+            position: relative;
+            z-index: 2;
         }
 
         .hero h1 {
-            font-size: 3rem;
+            font-size: 3.5rem;
             margin-bottom: 1rem;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
         }
 
         .hero p {
@@ -67,8 +84,55 @@ if ($categories_result) {
             max-width: 600px;
             margin-left: auto;
             margin-right: auto;
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
         }
-
+        
+        /* Market visuals */
+        .market-pattern {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            opacity: 0.2;
+            z-index: 0;
+            background-image: 
+                linear-gradient(90deg, transparent 90%, #ffffff 90%, #ffffff 100%),
+                linear-gradient(#ffffff 0.3em, transparent 0.3em);
+            background-size: 10% 20%, 100% 10%;
+        }
+        
+        .market-icon {
+            position: absolute;
+            font-size: 2rem;
+            color: rgba(255, 255, 255, 0.2);
+            z-index: 0;
+        }
+        
+        .market-icon.basket {
+            top: 15%;
+            left: 15%;
+            font-size: 3rem;
+        }
+        
+        .market-icon.farm {
+            top: 25%;
+            right: 20%;
+            font-size: 2.5rem;
+        }
+        
+        .market-icon.wheat {
+            bottom: 20%;
+            left: 25%;
+            font-size: 2.2rem;
+        }
+        
+        .market-icon.vegetable {
+            bottom: 30%;
+            right: 15%;
+            font-size: 2.8rem;
+        }
+        
         .featured-header {
             display: flex;
             justify-content: space-between;
@@ -284,7 +348,12 @@ if ($categories_result) {
     <?php include 'navbar.php'; ?>
 
     <header class="hero">
-        <div>
+        <div class="market-pattern"></div>
+        <div class="market-icon basket"><i class="fas fa-shopping-basket"></i></div>
+        <div class="market-icon farm"><i class="fas fa-tractor"></i></div>
+        <div class="market-icon wheat"><i class="fas fa-seedling"></i></div>
+        <div class="market-icon vegetable"><i class="fas fa-apple-alt"></i></div>
+        <div class="hero-content">
             <h1>Welcome to AgriMarket</h1>
             <p>Your trusted marketplace for agricultural products</p>
             <a href="products.php" class="btn btn-primary">
@@ -352,19 +421,21 @@ if ($categories_result) {
                         <a href="products.php?category_id=<?php echo $category['category_id']; ?>" class="category-card">
                             <?php 
                             // Choose icon based on category name
-                            $icon = 'fa-leaf'; // Default icon
+                            $icon = 'fa-seedling'; // Default icon
                             $categoryName = strtolower($category['name']);
                             
                             if (strpos($categoryName, 'livestock') !== false) {
-                                $icon = 'fa-cow';
+                                $icon = 'fa-horse';
                             } elseif (strpos($categoryName, 'crop') !== false) {
-                                $icon = 'fa-wheat-awn';
+                                $icon = 'fa-seedling';
                             } elseif (strpos($categoryName, 'dairy') !== false) {
-                                $icon = 'fa-bottle-water';
+                                $icon = 'fa-cheese';
                             } elseif (strpos($categoryName, 'fish') !== false) {
                                 $icon = 'fa-fish';
                             } elseif (strpos($categoryName, 'forestry') !== false) {
                                 $icon = 'fa-tree';
+                            } elseif (strpos($categoryName, 'miscellaneous') !== false) {
+                                $icon = 'fa-leaf';
                             }
                             ?>
                             <i class="fas <?php echo $icon; ?>"></i>
