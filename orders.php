@@ -7,19 +7,71 @@ if (!isset($_SESSION['user_id'])) {
 }
 
 $user_id = $_SESSION['user_id'];
+$role = $_SESSION['role'] ?? 'customer';
 
-// Fetch all orders for the user
-$orders_query = "SELECT * FROM orders WHERE user_id = ? ORDER BY created_at DESC";
-$orders_stmt = mysqli_prepare($conn, $orders_query);
-mysqli_stmt_bind_param($orders_stmt, "i", $user_id);
-mysqli_stmt_execute($orders_stmt);
-$orders_result = mysqli_stmt_get_result($orders_stmt);
+// Different query based on role
+if ($role === 'vendor') {
+    // First get the vendor_id
+    $vendor_query = "SELECT vendor_id FROM vendors WHERE user_id = ?";
+    $vendor_stmt = mysqli_prepare($conn, $vendor_query);
+    
+    if (!$vendor_stmt) {
+        die('MySQL prepare error: ' . mysqli_error($conn));
+    }
+    
+    mysqli_stmt_bind_param($vendor_stmt, "i", $user_id);
+    mysqli_stmt_execute($vendor_stmt);
+    $vendor_result = mysqli_stmt_get_result($vendor_stmt);
+    
+    if (mysqli_num_rows($vendor_result) === 0) {
+        // Not a vendor yet
+        $error_message = "Vendor profile not found. Please complete your vendor registration.";
+    } else {
+        $vendor_data = mysqli_fetch_assoc($vendor_result);
+        $vendor_id = $vendor_data['vendor_id'];
+        
+        // Get orders that contain products from this vendor
+        $orders_query = "
+            SELECT DISTINCT o.order_id, o.created_at, o.status, o.total, u.name AS customer_name,
+                   (SELECT COUNT(*) FROM order_items oi2 
+                    JOIN products p2 ON oi2.product_id = p2.product_id 
+                    WHERE oi2.order_id = o.order_id AND p2.vendor_id = ?) AS item_count
+            FROM orders o
+            JOIN order_items oi ON o.order_id = oi.order_id
+            JOIN products p ON oi.product_id = p.product_id
+            JOIN users u ON o.user_id = u.user_id
+            WHERE p.vendor_id = ? AND o.deleted_at IS NULL
+            ORDER BY o.created_at DESC";
+        
+        $orders_stmt = mysqli_prepare($conn, $orders_query);
+        
+        if (!$orders_stmt) {
+            die('MySQL prepare error: ' . mysqli_error($conn));
+        }
+        
+        mysqli_stmt_bind_param($orders_stmt, "ii", $vendor_id, $vendor_id);
+        mysqli_stmt_execute($orders_stmt);
+        $orders_result = mysqli_stmt_get_result($orders_stmt);
+    }
+} else {
+    // Regular customer query - unchanged
+    $orders_query = "SELECT * FROM orders WHERE user_id = ? AND deleted_at IS NULL ORDER BY created_at DESC";
+    $orders_stmt = mysqli_prepare($conn, $orders_query);
+    
+    if (!$orders_stmt) {
+        die('MySQL prepare error: ' . mysqli_error($conn));
+    }
+    
+    mysqli_stmt_bind_param($orders_stmt, "i", $user_id);
+    mysqli_stmt_execute($orders_stmt);
+    $orders_result = mysqli_stmt_get_result($orders_stmt);
+}
 ?>
 
 <!DOCTYPE html>
 <html>
 <head>
-    <title>My Orders - AgriMarket</title>
+    <title><?php echo ($role === 'vendor') ? 'Customer Orders' : 'My Orders'; ?> - AgriMarket</title>
     <link rel="stylesheet" href="styles.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
@@ -147,16 +199,16 @@ $orders_result = mysqli_stmt_get_result($orders_stmt);
         }
         
         .item-row:last-child {
+            border-bottom: none;
             margin-bottom: 0;
             padding-bottom: 0;
-            border-bottom: none;
         }
         
         .item-image {
             width: 60px;
             height: 60px;
-            border-radius: var(--border-radius);
             object-fit: cover;
+            border-radius: 4px;
             margin-right: 1rem;
         }
         
@@ -166,20 +218,13 @@ $orders_result = mysqli_stmt_get_result($orders_stmt);
         
         .item-name {
             font-weight: 500;
+            color: #333;
             margin-bottom: 0.25rem;
-            color: var(--dark-gray);
         }
         
         .item-meta {
-            font-size: 0.875rem;
             color: var(--medium-gray);
-        }
-        
-        .item-price {
-            font-weight: 500;
-            color: var(--dark-gray);
-            text-align: right;
-            min-width: 80px;
+            font-size: 0.9rem;
         }
         
         .order-summary {
@@ -200,43 +245,34 @@ $orders_result = mysqli_stmt_get_result($orders_stmt);
         }
         
         .order-actions {
+            margin-top: 1rem;
             display: flex;
-            gap: 0.75rem;
+            gap: 0.5rem;
         }
         
-        .btn-view-order {
+        .btn {
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+            font-size: 0.875rem;
+            text-decoration: none;
+            text-align: center;
+            display: inline-block;
+        }
+        
+        .btn-primary {
             background: var(--primary-color);
             color: white;
-            padding: 0.5rem 1rem;
-            border-radius: var(--border-radius);
-            text-decoration: none;
-            font-weight: 500;
-            font-size: 0.875rem;
-            display: inline-flex;
-            align-items: center;
-            gap: 0.5rem;
         }
         
-        .btn-view-order:hover {
-            background: var(--primary-dark);
-        }
-        
-        .btn-track-order {
-            background: white;
+        .btn-outline {
+            background: transparent;
             color: var(--primary-color);
             border: 1px solid var(--primary-color);
-            padding: 0.5rem 1rem;
-            border-radius: var(--border-radius);
-            text-decoration: none;
-            font-weight: 500;
-            font-size: 0.875rem;
-            display: inline-flex;
-            align-items: center;
-            gap: 0.5rem;
         }
         
-        .btn-track-order:hover {
-            background: #f0f7ff;
+        .btn-payment {
+            background: #28a745;
+            color: white;
         }
         
         @media (max-width: 768px) {
@@ -244,19 +280,8 @@ $orders_result = mysqli_stmt_get_result($orders_stmt);
                 flex-direction: column;
                 align-items: flex-start;
             }
-            
-            .order-meta {
-                margin-bottom: 1rem;
-            }
-            
-            .order-summary {
-                flex-direction: column;
-                align-items: flex-start;
-            }
-            
-            .order-actions {
-                width: 100%;
-                justify-content: space-between;
+            .meta-group {
+                margin-bottom: 0.5rem;
             }
         }
     </style>
@@ -265,26 +290,46 @@ $orders_result = mysqli_stmt_get_result($orders_stmt);
     <?php include 'navbar.php'; ?>
     
     <div class="orders-container">
-        <h1 class="page-title">My Orders</h1>
+        <h1 class="page-title"><?php echo ($role === 'vendor') ? 'Customer Orders' : 'My Orders'; ?></h1>
         
-        <?php if (mysqli_num_rows($orders_result) === 0): ?>
+        <?php if (isset($error_message)): ?>
+            <div class="alert"><?php echo htmlspecialchars($error_message); ?></div>
+        <?php endif; ?>
+        
+        <?php if (isset($orders_result) && mysqli_num_rows($orders_result) === 0): ?>
         <div class="orders-empty">
             <div class="empty-icon">
                 <i class="fas fa-shopping-bag"></i>
             </div>
-            <h2 class="empty-message">You haven't placed any orders yet.</h2>
-            <a href="products.php" class="btn-primary">Start Shopping</a>
+            <?php if ($role === 'vendor'): ?>
+                <h2 class="empty-message">No orders for your products yet.</h2>
+                <a href="product_upload.php" class="btn-primary">Upload Products</a>
+            <?php else: ?>
+                <h2 class="empty-message">You haven't placed any orders yet.</h2>
+                <a href="products.php" class="btn-primary">Start Shopping</a>
+            <?php endif; ?>
         </div>
-        <?php else: ?>
+        <?php elseif (isset($orders_result)): ?>
             <?php while ($order = mysqli_fetch_assoc($orders_result)): ?>
                 <?php
-                // Fetch order items
-                $items_query = "SELECT oi.*, p.name, p.image_url 
-                                FROM order_items oi
-                                JOIN products p ON oi.product_id = p.product_id
-                                WHERE oi.order_id = ?";
-                $items_stmt = mysqli_prepare($conn, $items_query);
-                mysqli_stmt_bind_param($items_stmt, "i", $order['order_id']);
+                if ($role === 'vendor') {
+                    // For vendors, only show items from their products
+                    $items_query = "SELECT oi.*, p.name, p.image_url 
+                                   FROM order_items oi
+                                   JOIN products p ON oi.product_id = p.product_id
+                                   WHERE oi.order_id = ? AND p.vendor_id = ?";
+                    $items_stmt = mysqli_prepare($conn, $items_query);
+                    mysqli_stmt_bind_param($items_stmt, "ii", $order['order_id'], $vendor_id);
+                } else {
+                    // For customers, show all items in their order
+                    $items_query = "SELECT oi.*, p.name, p.image_url 
+                                   FROM order_items oi
+                                   JOIN products p ON oi.product_id = p.product_id
+                                   WHERE oi.order_id = ?";
+                    $items_stmt = mysqli_prepare($conn, $items_query);
+                    mysqli_stmt_bind_param($items_stmt, "i", $order['order_id']);
+                }
+                
                 mysqli_stmt_execute($items_stmt);
                 $items_result = mysqli_stmt_get_result($items_stmt);
                 
@@ -326,9 +371,15 @@ $orders_result = mysqli_stmt_get_result($orders_stmt);
                                 <div class="meta-label">Order Date</div>
                                 <div class="meta-value"><?php echo date('M j, Y', strtotime($order['created_at'])); ?></div>
                             </div>
+                            <?php if ($role === 'vendor'): ?>
+                            <div class="meta-group">
+                                <div class="meta-label">Customer</div>
+                                <div class="meta-value"><?php echo htmlspecialchars($order['customer_name']); ?></div>
+                            </div>
+                            <?php endif; ?>
                             <div class="meta-group">
                                 <div class="meta-label">Items</div>
-                                <div class="meta-value"><?php echo $item_count; ?> items</div>
+                                <div class="meta-value"><?php echo $role === 'vendor' ? $order['item_count'] : $item_count; ?> items</div>
                             </div>
                         </div>
                         <div class="order-status <?php echo $status_class; ?>">
@@ -363,16 +414,29 @@ $orders_result = mysqli_stmt_get_result($orders_stmt);
                         
                         <div class="order-summary">
                             <div class="summary-total">
-                                Total: $<?php echo number_format($order['total'], 2); ?>
+                                <?php if ($role === 'vendor'): ?>
+                                    Total for Your Products: $<?php 
+                                    $vendor_total = 0;
+                                    foreach ($items as $item) {
+                                        $vendor_total += $item['price'] * $item['quantity'];
+                                    }
+                                    echo number_format($vendor_total, 2); 
+                                    ?>
+                                <?php else: ?>
+                                    Total: $<?php echo number_format($order['total'], 2); ?>
+                                <?php endif; ?>
                             </div>
                             <div class="order-actions">
-                                <a href="order_confirmation.php?order_id=<?php echo $order['order_id']; ?>" class="btn-view-order">
-                                    <i class="fas fa-eye"></i> View Details
+                                <a href="order_details.php?id=<?php echo $order['order_id']; ?>" class="btn btn-primary">
+                                    View Details
                                 </a>
-                                <?php if ($order['status'] !== 'delivered' && $order['status'] !== 'cancelled'): ?>
-                                <a href="#" class="btn-track-order">
-                                    <i class="fas fa-truck"></i> Track Order
+                                <a href="check_order_payment.php?id=<?php echo $order['order_id']; ?>" class="btn btn-payment">
+                                    Payment Details
                                 </a>
+                                <?php if ($role === 'customer' && $order['status'] !== 'cancelled'): ?>
+                                    <form method="post" action="order_details.php?id=<?php echo $order['order_id']; ?>">
+                                        <button type="submit" name="reorder" class="btn btn-outline">Reorder</button>
+                                    </form>
                                 <?php endif; ?>
                             </div>
                         </div>

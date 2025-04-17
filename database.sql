@@ -25,6 +25,7 @@ CREATE TABLE vendors (
     business_name VARCHAR(100) NOT NULL,
     subscription_tier ENUM('basic', 'premium', 'enterprise') NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    deleted_at DATETIME DEFAULT NULL,
     FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
 );
 
@@ -168,9 +169,38 @@ CREATE TABLE audit_logs (
 -- Settings
 CREATE TABLE settings (
     setting_id INT AUTO_INCREMENT PRIMARY KEY,
-    name VARCHAR(100) NOT NULL,
-    value TEXT NOT NULL,
+    setting_key VARCHAR(50) NOT NULL UNIQUE,
+    setting_value TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+-- Create staff_details table
+CREATE TABLE staff_details (
+    staff_detail_id INT PRIMARY KEY AUTO_INCREMENT,
+    user_id INT NOT NULL,
+    position VARCHAR(50) NOT NULL,
+    department VARCHAR(50),
+    hire_date DATE DEFAULT CURRENT_DATE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(user_id)
+);
+
+-- Create staff_tasks table
+CREATE TABLE staff_tasks (
+    task_id INT PRIMARY KEY AUTO_INCREMENT,
+    staff_id INT NOT NULL,
+    description TEXT NOT NULL,
+    status ENUM('pending', 'in_progress', 'completed', 'cancelled') DEFAULT 'pending',
+    due_date DATE,
+    completion_date DATETIME,
+    assigned_by INT NOT NULL,
+    priority ENUM('low', 'medium', 'high') DEFAULT 'medium',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (staff_id) REFERENCES users(user_id),
+    FOREIGN KEY (assigned_by) REFERENCES users(user_id)
 );
 
 -- Payment logs table
@@ -191,5 +221,328 @@ CREATE INDEX idx_order_user_status ON orders(user_id, status);
 CREATE INDEX idx_analytics_type ON analytics(type);
 CREATE INDEX idx_notifications_user ON notifications(user_id);
 
--- Add deleted_at column to vendors table
-ALTER TABLE vendors ADD COLUMN deleted_at DATETIME DEFAULT NULL;
+-- ================================
+-- AgriMarket Database Update Script
+-- ================================
+
+-- Ensure we're using the correct database
+USE agrimarket;
+
+-- ================================
+-- 1. Add missing columns to orders table if needed
+-- ================================
+
+-- Check and add payment_method column
+SET @column_exists = 0;
+SELECT COUNT(*) INTO @column_exists 
+FROM information_schema.columns 
+WHERE table_schema = DATABASE() 
+AND table_name = 'orders' 
+AND column_name = 'payment_method';
+
+SET @sql = IF(@column_exists = 0, 
+    'ALTER TABLE orders ADD COLUMN payment_method VARCHAR(50) DEFAULT NULL',
+    'SELECT "payment_method column already exists" AS message');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+-- Check and add subtotal column
+SET @column_exists = 0;
+SELECT COUNT(*) INTO @column_exists 
+FROM information_schema.columns 
+WHERE table_schema = DATABASE() 
+AND table_name = 'orders' 
+AND column_name = 'subtotal';
+
+SET @sql = IF(@column_exists = 0, 
+    'ALTER TABLE orders ADD COLUMN subtotal DECIMAL(10,2) DEFAULT 0',
+    'SELECT "subtotal column already exists" AS message');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+-- Check and add shipping column
+SET @column_exists = 0;
+SELECT COUNT(*) INTO @column_exists 
+FROM information_schema.columns 
+WHERE table_schema = DATABASE() 
+AND table_name = 'orders' 
+AND column_name = 'shipping';
+
+SET @sql = IF(@column_exists = 0, 
+    'ALTER TABLE orders ADD COLUMN shipping DECIMAL(10,2) DEFAULT 0',
+    'SELECT "shipping column already exists" AS message');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+-- Check and add tax column
+SET @column_exists = 0;
+SELECT COUNT(*) INTO @column_exists 
+FROM information_schema.columns 
+WHERE table_schema = DATABASE() 
+AND table_name = 'orders' 
+AND column_name = 'tax';
+
+SET @sql = IF(@column_exists = 0, 
+    'ALTER TABLE orders ADD COLUMN tax DECIMAL(10,2) DEFAULT 0',
+    'SELECT "tax column already exists" AS message');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+-- Check and add payment_status column
+SET @column_exists = 0;
+SELECT COUNT(*) INTO @column_exists 
+FROM information_schema.columns 
+WHERE table_schema = DATABASE() 
+AND table_name = 'orders' 
+AND column_name = 'payment_status';
+
+SET @sql = IF(@column_exists = 0, 
+    'ALTER TABLE orders ADD COLUMN payment_status ENUM("pending", "processing", "completed", "failed", "refunded") DEFAULT "pending"',
+    'SELECT "payment_status column already exists" AS message');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+-- Check and add transaction_id column
+SET @column_exists = 0;
+SELECT COUNT(*) INTO @column_exists 
+FROM information_schema.columns 
+WHERE table_schema = DATABASE() 
+AND table_name = 'orders' 
+AND column_name = 'transaction_id';
+
+SET @sql = IF(@column_exists = 0, 
+    'ALTER TABLE orders ADD COLUMN transaction_id VARCHAR(100) DEFAULT NULL',
+    'SELECT "transaction_id column already exists" AS message');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+-- ================================
+-- 2. Update payment_logs table with additional fields
+-- ================================
+
+-- Check if payment_logs table exists, create if not
+SET @table_exists = 0;
+SELECT COUNT(*) INTO @table_exists 
+FROM information_schema.tables
+WHERE table_schema = DATABASE()
+AND table_name = 'payment_logs';
+
+SET @sql = IF(@table_exists = 0, 
+    'CREATE TABLE payment_logs (
+        log_id INT AUTO_INCREMENT PRIMARY KEY,
+        payment_method VARCHAR(50) NOT NULL,
+        amount DECIMAL(10,2) NOT NULL,
+        order_id INT,
+        status VARCHAR(50) NOT NULL,
+        details TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (order_id) REFERENCES orders(order_id) ON DELETE SET NULL
+    )',
+    'SELECT "payment_logs table already exists" AS message');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+-- Add subtotal column to payment_logs if it doesn't exist
+SET @column_exists = 0;
+SELECT COUNT(*) INTO @column_exists 
+FROM information_schema.columns 
+WHERE table_schema = DATABASE() 
+AND table_name = 'payment_logs' 
+AND column_name = 'subtotal';
+
+SET @sql = IF(@column_exists = 0, 
+    'ALTER TABLE payment_logs ADD COLUMN subtotal DECIMAL(10,2) DEFAULT NULL AFTER amount',
+    'SELECT "subtotal column already exists in payment_logs" AS message');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+-- Add tax column to payment_logs if it doesn't exist
+SET @column_exists = 0;
+SELECT COUNT(*) INTO @column_exists 
+FROM information_schema.columns 
+WHERE table_schema = DATABASE() 
+AND table_name = 'payment_logs' 
+AND column_name = 'tax';
+
+SET @sql = IF(@column_exists = 0, 
+    'ALTER TABLE payment_logs ADD COLUMN tax DECIMAL(10,2) DEFAULT NULL AFTER subtotal',
+    'SELECT "tax column already exists in payment_logs" AS message');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+-- Add shipping column to payment_logs if it doesn't exist
+SET @column_exists = 0;
+SELECT COUNT(*) INTO @column_exists 
+FROM information_schema.columns 
+WHERE table_schema = DATABASE() 
+AND table_name = 'payment_logs' 
+AND column_name = 'shipping';
+
+SET @sql = IF(@column_exists = 0, 
+    'ALTER TABLE payment_logs ADD COLUMN shipping DECIMAL(10,2) DEFAULT NULL AFTER tax',
+    'SELECT "shipping column already exists in payment_logs" AS message');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+-- Add payment_details column to payment_logs if it doesn't exist
+SET @column_exists = 0;
+SELECT COUNT(*) INTO @column_exists 
+FROM information_schema.columns 
+WHERE table_schema = DATABASE() 
+AND table_name = 'payment_logs' 
+AND column_name = 'payment_details';
+
+SET @sql = IF(@column_exists = 0, 
+    'ALTER TABLE payment_logs ADD COLUMN payment_details JSON DEFAULT NULL',
+    'SELECT "payment_details column already exists in payment_logs" AS message');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+-- Update status field to ENUM type if possible (safely)
+SET @column_type = '';
+SELECT DATA_TYPE INTO @column_type
+FROM information_schema.columns 
+WHERE table_schema = DATABASE() 
+AND table_name = 'payment_logs' 
+AND column_name = 'status';
+
+SET @sql = IF(@column_type != 'enum', 
+    'ALTER TABLE payment_logs MODIFY COLUMN status ENUM("pending", "processing", "completed", "failed", "refunded") DEFAULT "pending"',
+    'SELECT "status column is already ENUM type" AS message');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+-- Check if index exists and add if needed
+SET @index_exists = 0;
+SELECT COUNT(*) INTO @index_exists 
+FROM information_schema.statistics
+WHERE table_schema = DATABASE()
+AND table_name = 'payment_logs'
+AND index_name = 'idx_payment_logs_order_id';
+
+SET @sql = IF(@index_exists = 0, 
+    'CREATE INDEX idx_payment_logs_order_id ON payment_logs(order_id)',
+    'SELECT "Index idx_payment_logs_order_id already exists" AS message');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+-- ================================
+-- 3. Update existing payment logs with data from orders
+-- ================================
+
+-- Update payment_details with available information
+UPDATE payment_logs pl
+JOIN orders o ON pl.order_id = o.order_id
+SET pl.payment_details = JSON_OBJECT(
+    'payment_method', IFNULL(o.payment_method, 'Not specified'),
+    'transaction_id', IFNULL(o.transaction_id, ''),
+    'payment_status', IFNULL(o.payment_status, 'pending')
+)
+WHERE o.order_id IS NOT NULL;
+
+-- Update numeric fields
+UPDATE payment_logs pl
+JOIN orders o ON pl.order_id = o.order_id
+SET 
+    pl.subtotal = IFNULL(o.subtotal, 0),
+    pl.tax = IFNULL(o.tax, 0),
+    pl.shipping = IFNULL(o.shipping, 0)
+WHERE o.order_id IS NOT NULL;
+
+-- ================================
+-- 4. Create stored procedure for updating payment logs
+-- ================================
+
+-- Drop procedure if it exists
+DROP PROCEDURE IF EXISTS update_payment_log_after_order_update;
+
+-- Create stored procedure for updating payment logs
+DELIMITER //
+CREATE PROCEDURE update_payment_log_after_order_update(
+    IN p_order_id INT, 
+    IN p_payment_method VARCHAR(50),
+    IN p_subtotal DECIMAL(10,2),
+    IN p_tax DECIMAL(10,2),
+    IN p_shipping DECIMAL(10,2),
+    IN p_status VARCHAR(50),
+    IN p_transaction_id VARCHAR(100)
+)
+BEGIN
+    DECLARE log_exists INT DEFAULT 0;
+    
+    -- Check if a payment log exists for this order
+    SELECT COUNT(*) INTO log_exists FROM payment_logs WHERE order_id = p_order_id;
+    
+    IF log_exists > 0 THEN
+        -- Update the most recent payment log
+        UPDATE payment_logs 
+        SET 
+            payment_method = IFNULL(p_payment_method, payment_method),
+            subtotal = IFNULL(p_subtotal, subtotal),
+            tax = IFNULL(p_tax, tax),
+            shipping = IFNULL(p_shipping, shipping),
+            status = IFNULL(p_status, status),
+            payment_details = JSON_OBJECT(
+                'transaction_id', p_transaction_id,
+                'payment_method', p_payment_method,
+                'payment_status', p_status
+            )
+        WHERE 
+            order_id = p_order_id
+        ORDER BY created_at DESC
+        LIMIT 1;
+    END IF;
+END //
+DELIMITER ;
+
+-- ================================
+-- 5. Create trigger for automatic updates
+-- ================================
+
+-- Drop trigger if it exists
+DROP TRIGGER IF EXISTS after_order_update;
+
+-- Create trigger to automatically update payment logs
+DELIMITER //
+CREATE TRIGGER after_order_update
+AFTER UPDATE ON orders
+FOR EACH ROW
+BEGIN
+    IF (NEW.payment_method IS NOT NULL OR 
+        NEW.subtotal IS NOT NULL OR 
+        NEW.tax IS NOT NULL OR 
+        NEW.shipping IS NOT NULL OR
+        NEW.payment_status IS NOT NULL OR
+        NEW.transaction_id IS NOT NULL) THEN
+        
+        CALL update_payment_log_after_order_update(
+            NEW.order_id,
+            NEW.payment_method,
+            NEW.subtotal,
+            NEW.tax,
+            NEW.shipping,
+            NEW.payment_status,
+            NEW.transaction_id
+        );
+    END IF;
+END //
+DELIMITER ;
+
+-- ================================
+-- 6. Final confirmation message
+-- ================================
+
+SELECT 'Database update completed successfully' AS 'Result';

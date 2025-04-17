@@ -388,7 +388,7 @@ function detect_card_type($number) {
 /**
  * Update payment status for an order
  */
-function update_payment_status($order_id, $transaction_id, $status) {
+function update_payment_status($order_id, $transaction_id, $status, $payment_method = null) {
     global $conn;
     
     // First, check if orders table has payment_status column
@@ -418,15 +418,28 @@ function update_payment_status($order_id, $transaction_id, $status) {
     }
     
     // Now update the order with payment information
-    $query = "UPDATE orders SET payment_status = ?, transaction_id = ? WHERE order_id = ?";
-    $stmt = mysqli_prepare($conn, $query);
-    
-    if (!$stmt) {
-        error_log("Failed to prepare update payment status query: " . mysqli_error($conn));
-        return false;
+    if ($payment_method) {
+        $query = "UPDATE orders SET payment_status = ?, transaction_id = ?, payment_method = ? WHERE order_id = ?";
+        $stmt = mysqli_prepare($conn, $query);
+        
+        if (!$stmt) {
+            error_log("Failed to prepare update payment status query: " . mysqli_error($conn));
+            return false;
+        }
+        
+        mysqli_stmt_bind_param($stmt, "sssi", $status, $transaction_id, $payment_method, $order_id);
+    } else {
+        $query = "UPDATE orders SET payment_status = ?, transaction_id = ? WHERE order_id = ?";
+        $stmt = mysqli_prepare($conn, $query);
+        
+        if (!$stmt) {
+            error_log("Failed to prepare update payment status query: " . mysqli_error($conn));
+            return false;
+        }
+        
+        mysqli_stmt_bind_param($stmt, "ssi", $status, $transaction_id, $order_id);
     }
     
-    mysqli_stmt_bind_param($stmt, "ssi", $status, $transaction_id, $order_id);
     $result = mysqli_stmt_execute($stmt);
     mysqli_stmt_close($stmt);
     

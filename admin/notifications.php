@@ -2,7 +2,6 @@
 session_start();
 require_once '../includes/config.php';
 require_once '../includes/functions.php';
-require_once '../classes/Mailer.php';
 
 // Check if user is logged in and is admin
 if (!isset($_SESSION['user_id']) || !isAdmin($_SESSION['user_id'])) {
@@ -11,14 +10,6 @@ if (!isset($_SESSION['user_id']) || !isAdmin($_SESSION['user_id'])) {
 }
 
 $conn = getConnection();
-// Initialize Mailer with error handling
-try {
-    $mailer = new Mailer();
-} catch (Exception $e) {
-    error_log("Failed to initialize Mailer: " . $e->getMessage());
-    $error_message = "Email functionality is currently unavailable. Please try again later.";
-}
-
 $success_message = '';
 $error_message = '';
 
@@ -80,54 +71,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['send_notification']))
                 error_log('No recipients found in database, using test recipients for development.');
             }
             
-            // Send emails
+            // Send notifications
             if (!empty($recipients)) {
-                if (isset($mailer) && method_exists($mailer, 'sendPromotionEmail')) {
-                    $email_sent = false;
+                $notification_count = 0;
+                
+                // Send to each recipient individually
+                foreach ($recipients as $recipient) {
+                    $notification_message = $subject . ": " . $message; // Combine subject and message
+                    $insert_query = "INSERT INTO notifications (user_id, message, type, created_at) 
+                                   VALUES (?, ?, 'promotion', NOW())";
+                    $stmt = mysqli_prepare($conn, $insert_query);
                     
-                    // Send to each recipient individually
-                    foreach ($recipients as $recipient) {
-                        // Format email content as a promotion
-                        $promotion = [
-                            [
-                                'title' => $subject,
-                                'description' => $message,
-                                'link' => isset($_SERVER['HTTP_HOST']) ? 'http://' . $_SERVER['HTTP_HOST'] : '#'
-                            ]
-                        ];
-                        
-                        if ($mailer->sendPromotionEmail($recipient['email'], $subject, $promotion)) {
-                            $email_sent = true;
-                            
-                            // Insert notification into database
-                            try {
-                                $notification_message = $subject . ": " . $message; // Combine subject and message
-                                $insert_query = "INSERT INTO notifications (user_id, message, type, created_at) 
-                                               VALUES (?, ?, 'promotion', NOW())";
-                                $stmt = mysqli_prepare($conn, $insert_query);
-                                
-                                if ($stmt === false) {
-                                    // Log SQL error for debugging
-                                    error_log("SQL Prepare Error: " . mysqli_error($conn));
-                                } else {
-                                    mysqli_stmt_bind_param($stmt, "is", $recipient['user_id'], $notification_message);
-                                    mysqli_stmt_execute($stmt);
-                                    mysqli_stmt_close($stmt);
-                                }
-                            } catch (Exception $e) {
-                                // Log exception but continue with other recipients
-                                error_log("Failed to insert notification: " . $e->getMessage());
-                            }
-                        }
-                    }
-                    
-                    if ($email_sent) {
-                        $success_message = "Notifications sent successfully to " . count($recipients) . " recipients.";
+                    if ($stmt === false) {
+                        // Log SQL error for debugging
+                        error_log("SQL Prepare Error: " . mysqli_error($conn));
                     } else {
-                        $error_message = "Failed to send emails. Please try again.";
+                        mysqli_stmt_bind_param($stmt, "is", $recipient['user_id'], $notification_message);
+                        if (mysqli_stmt_execute($stmt)) {
+                            $notification_count++;
+                        }
+                        mysqli_stmt_close($stmt);
                     }
+                }
+                
+                if ($notification_count > 0) {
+                    $success_message = "Notifications sent successfully to " . $notification_count . " recipients.";
                 } else {
-                    $error_message = "Email functionality is not available. Please check the Mailer class.";
+                    $error_message = "Failed to send notifications. Please try again.";
                 }
             } else {
                 $error_message = "No recipients found for the selected category.";
@@ -160,18 +130,52 @@ if (!$notifications_result) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Admin Notifications - AgriMarket</title>
     <link rel="stylesheet" href="../css/style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f4;
+            margin: 0;
+            padding: 0;
+        }
+        
+        .sidebar-header {
+            background-color: #333;
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+        
+        .sidebar-header h3 {
+            margin: 0;
+            font-size: 1.5rem;
+        }
+        
+        .content {
+            margin-left: 250px;
             padding: 20px;
         }
         
-        .notification-form {
-            background-color: #f9f9f9;
+        .page-header {
+            background-color: white;
             padding: 20px;
-            border-radius: 5px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+        
+        .page-header h1 {
+            margin: 0;
+            font-size: 1.8rem;
+            color: #333;
+        }
+        
+        .notification-form {
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
             margin-bottom: 30px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
         }
         
         .form-group {
@@ -182,6 +186,7 @@ if (!$notifications_result) {
             display: block;
             margin-bottom: 5px;
             font-weight: bold;
+            color: #333;
         }
         
         input[type="text"], 
@@ -191,19 +196,23 @@ if (!$notifications_result) {
             padding: 10px;
             border: 1px solid #ddd;
             border-radius: 4px;
+            font-size: 1rem;
         }
         
         textarea {
             min-height: 150px;
+            resize: vertical;
         }
         
         .btn-submit {
             background-color: #4CAF50;
             color: white;
             border: none;
-            padding: 10px 20px;
+            padding: 12px 20px;
             cursor: pointer;
             border-radius: 4px;
+            font-size: 1rem;
+            transition: background-color 0.3s;
         }
         
         .btn-submit:hover {
@@ -211,7 +220,17 @@ if (!$notifications_result) {
         }
         
         .notification-history {
-            margin-top: 30px;
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+        
+        .notification-history h2 {
+            margin-top: 0;
+            color: #333;
+            font-size: 1.5rem;
         }
         
         table {
@@ -227,6 +246,7 @@ if (!$notifications_result) {
         
         th {
             background-color: #f2f2f2;
+            font-weight: 500;
         }
         
         tr:hover {
@@ -250,13 +270,40 @@ if (!$notifications_result) {
             color: #a94442;
             border: 1px solid #ebccd1;
         }
+        
+        /* Override sidebar styles */
+        .sidebar {
+            background-color: #333;
+        }
+        
+        .sidebar-header {
+            background-color: #333;
+            color: white;
+            padding: 20px;
+            text-align: left;
+            border-bottom: 1px solid #444;
+        }
+        
+        .sidebar-header h3 {
+            margin: 0;
+            font-size: 1.5rem;
+            font-weight: 500;
+        }
+        
+        @media (max-width: 768px) {
+            .content {
+                margin-left: 0;
+            }
+        }
     </style>
 </head>
 <body>
-    <?php include_once 'admin_header.php'; ?>
+    <?php include_once '../sidebar.php'; ?>
     
-    <div class="container">
-        <h1>Admin Notifications</h1>
+    <div class="content">
+        <div class="page-header">
+            <h1>Admin Notifications</h1>
+        </div>
         
         <?php if (!empty($success_message)): ?>
             <div class="alert alert-success"><?php echo $success_message; ?></div>
@@ -267,7 +314,7 @@ if (!$notifications_result) {
         <?php endif; ?>
         
         <div class="notification-form">
-            <h2>Send Promotional Email</h2>
+            <h2>Send Promotional Notification</h2>
             <form method="POST" action="">
                 <div class="form-group">
                     <label for="recipient_type">Recipient</label>
@@ -285,7 +332,7 @@ if (!$notifications_result) {
                 
                 <div class="form-group">
                     <label for="message">Message</label>
-                    <textarea name="message" id="message" required></textarea>
+                    <textarea name="message" id="message" required placeholder="Enter promotion message"></textarea>
                 </div>
                 
                 <button type="submit" name="send_notification" class="btn-submit">Send Notification</button>
@@ -321,7 +368,5 @@ if (!$notifications_result) {
             <?php endif; ?>
         </div>
     </div>
-    
-    <?php include_once 'footer.php'; ?>
 </body>
 </html> 

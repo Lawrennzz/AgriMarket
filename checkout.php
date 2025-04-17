@@ -118,8 +118,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             require_once 'payment_processor.php';
             
             // Insert order
-            $order_query = "INSERT INTO orders (user_id, total, shipping_address, status, created_at) 
-                           VALUES (?, ?, ?, 'pending', NOW())";
+            $order_query = "INSERT INTO orders (user_id, total, subtotal, shipping, tax, shipping_address, status, created_at) 
+                           VALUES (?, ?, ?, ?, ?, ?, 'pending', NOW())";
             $order_stmt = mysqli_prepare($conn, $order_query);
             
             if ($order_stmt === false) {
@@ -136,7 +136,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'zip' => $zip,
                 'payment_method' => $payment_method
             ]);
-            mysqli_stmt_bind_param($order_stmt, "ids", $user_id, $total, $shipping_address);
+            mysqli_stmt_bind_param($order_stmt, "idddss", $user_id, $total, $subtotal, $shipping, $tax, $shipping_address);
             
             if (!mysqli_stmt_execute($order_stmt)) {
                 throw new Exception("Error inserting order: " . mysqli_stmt_error($order_stmt));
@@ -200,7 +200,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $transaction_id = $payment_result['transaction_id'] ?? null;
                 
                 // Update payment status
-                update_payment_status($order_id, $transaction_id, $payment_status);
+                update_payment_status($order_id, $transaction_id, $payment_status, $payment_method);
                 
                 // Clear cart
                 $clear_cart_query = "DELETE FROM cart WHERE user_id = ?";
@@ -215,6 +215,54 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $message = "Your order #$order_id has been placed successfully and is being processed.";
                 mysqli_stmt_bind_param($notification_stmt, "is", $user_id, $message);
                 mysqli_stmt_execute($notification_stmt);
+                
+                // Send order confirmation email
+                try {
+                    require_once 'includes/Mailer.php';
+                    
+                    // Get user details
+                    $user_query = "SELECT name, email FROM users WHERE user_id = ?";
+                    $user_stmt = mysqli_prepare($conn, $user_query);
+                    mysqli_stmt_bind_param($user_stmt, "i", $user_id);
+                    mysqli_stmt_execute($user_stmt);
+                    $user_result = mysqli_stmt_get_result($user_stmt);
+                    $user_data = mysqli_fetch_assoc($user_result);
+                    
+                    // Get order details
+                    $order_query = "SELECT * FROM orders WHERE order_id = ?";
+                    $order_stmt = mysqli_prepare($conn, $order_query);
+                    mysqli_stmt_bind_param($order_stmt, "i", $order_id);
+                    mysqli_stmt_execute($order_stmt);
+                    $order_result = mysqli_stmt_get_result($order_stmt);
+                    $order_data = mysqli_fetch_assoc($order_result);
+                    
+                    // Get order items
+                    $items_query = "SELECT oi.*, p.name FROM order_items oi 
+                                   JOIN products p ON oi.product_id = p.product_id
+                                   WHERE oi.order_id = ?";
+                    $items_stmt = mysqli_prepare($conn, $items_query);
+                    mysqli_stmt_bind_param($items_stmt, "i", $order_id);
+                    mysqli_stmt_execute($items_stmt);
+                    $items_result = mysqli_stmt_get_result($items_stmt);
+                    
+                    $order_items = [];
+                    while ($item = mysqli_fetch_assoc($items_result)) {
+                        $order_items[] = $item;
+                    }
+                    
+                    // Send the confirmation email
+                    $mailer = new Mailer();
+                    $mailer->sendOrderConfirmation(
+                        $order_id,
+                        $user_data['email'],
+                        $user_data['name'],
+                        $order_data,
+                        $order_items
+                    );
+                } catch (Exception $e) {
+                    // Log the error but continue with the checkout process
+                    error_log("Failed to send order confirmation email: " . $e->getMessage());
+                }
                 
                 mysqli_commit($conn);
                 

@@ -1,18 +1,15 @@
 <?php
 require_once 'config.php';
-require_once 'classes/Mailer.php';
 
 /**
  * Notification handling class
- * Manages both database notifications and email notifications
+ * Manages database notifications only
  */
 class Notification {
     private $conn;
-    private $mailer;
     
     public function __construct($conn) {
         $this->conn = $conn;
-        $this->mailer = new Mailer();
     }
     
     /**
@@ -78,7 +75,7 @@ class Notification {
     }
     
     /**
-     * Create an order notification and send email
+     * Create an order notification
      */
     public function notifyOrderCreated($order_id) {
         // Get order details
@@ -97,14 +94,45 @@ class Notification {
         
         // Create database notification
         $message = "Your order #{$order_id} has been placed successfully.";
-        $this->create($order['user_id'], $message, 'order', $order_id, 'order');
+        $db_result = $this->create($order['user_id'], $message, 'order', $order_id, 'order');
         
-        // Send email notification
-        return $this->mailer->sendOrderConfirmation($order_id, $order['email'], $order['name']);
+        // Also send email notification if Mailer class exists
+        try {
+            if (class_exists('Mailer')) {
+                // Get order items
+                $items_query = "SELECT oi.*, p.name FROM order_items oi 
+                               JOIN products p ON oi.product_id = p.product_id
+                               WHERE oi.order_id = ?";
+                $items_stmt = $this->conn->prepare($items_query);
+                $items_stmt->bind_param("i", $order_id);
+                $items_stmt->execute();
+                $items_result = $items_stmt->get_result();
+                
+                $order_items = [];
+                while ($item = $items_result->fetch_assoc()) {
+                    $order_items[] = $item;
+                }
+                
+                // Send the confirmation email
+                $mailer = new Mailer();
+                $mailer->sendOrderConfirmation(
+                    $order_id,
+                    $order['email'],
+                    $order['name'],
+                    $order,
+                    $order_items
+                );
+            }
+        } catch (Exception $e) {
+            // Log the error but continue with the notification
+            error_log("Failed to send order confirmation email: " . $e->getMessage());
+        }
+        
+        return $db_result;
     }
     
     /**
-     * Create an order status update notification and send email
+     * Create an order status update notification
      */
     public function notifyOrderStatusUpdate($order_id, $new_status) {
         // Get order details
@@ -125,14 +153,31 @@ class Notification {
         $message = "Your order #{$order_id} status has been updated to " . ucfirst($new_status) . ".";
         
         // Create database notification
-        $this->create($order['user_id'], $message, 'order_update', $order_id, 'order');
+        $db_result = $this->create($order['user_id'], $message, 'order_update', $order_id, 'order');
         
-        // Send email notification
-        return $this->mailer->sendOrderStatusUpdate($order_id, $order['email'], $order['name'], $new_status);
+        // Also send email notification if Mailer class exists
+        try {
+            if (class_exists('Mailer')) {
+                // Send the status update email
+                $mailer = new Mailer();
+                $mailer->sendOrderStatusUpdate(
+                    $order_id,
+                    $order['email'],
+                    $order['name'],
+                    $new_status,
+                    $order
+                );
+            }
+        } catch (Exception $e) {
+            // Log the error but continue with the notification
+            error_log("Failed to send order status update email: " . $e->getMessage());
+        }
+        
+        return $db_result;
     }
     
     /**
-     * Send promotional email to a specific user
+     * Send promotional notification to a specific user
      */
     public function sendPromotion($user_id, $subject, $message) {
         // Get user details
@@ -147,14 +192,11 @@ class Notification {
         }
         
         // Create database notification
-        $this->create($user_id, $subject, 'promotion');
-        
-        // Send promotional email
-        return $this->mailer->sendPromotionEmail($user['email'], $user['name'], $subject, $message);
+        return $this->create($user_id, $subject, 'promotion');
     }
     
     /**
-     * Send promotional email to multiple users
+     * Send promotional notification to multiple users
      */
     public function sendBulkPromotion($user_ids, $subject, $message) {
         if (empty($user_ids)) {
@@ -173,7 +215,7 @@ class Notification {
     }
     
     /**
-     * Send promotional email to all users
+     * Send promotional notification to all users
      */
     public function sendPromotionToAllUsers($subject, $message) {
         // Get all active users
@@ -185,10 +227,7 @@ class Notification {
         
         while ($user = $result->fetch_assoc()) {
             // Create database notification
-            $this->create($user['user_id'], $subject, 'promotion');
-            
-            // Send promotional email
-            if ($this->mailer->sendPromotionEmail($user['email'], $user['name'], $subject, $message)) {
+            if ($this->create($user['user_id'], $subject, 'promotion')) {
                 $success_count++;
             }
         }

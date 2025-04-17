@@ -51,33 +51,96 @@ while ($row = mysqli_fetch_assoc($analytics_result)) {
 }
 mysqli_stmt_close($analytics_stmt);
 
+// Include Mailer class
+require_once 'includes/Mailer.php';
+
 // Handle notification sending
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['send_notification'])) {
-    $message = filter_var($_POST['message'], FILTER_SANITIZE_STRING);
+    $message = htmlspecialchars($_POST['message'] ?? '', ENT_QUOTES, 'UTF-8');
+    $subject = htmlspecialchars($_POST['subject'] ?? 'New Notification from AgriMarket', ENT_QUOTES, 'UTF-8');
+    $send_email = isset($_POST['send_email']) && $_POST['send_email'] == '1';
+    
     if (!empty($message)) {
-        $notification_query = "
-            INSERT INTO notifications (user_id, message, type) 
-            SELECT user_id, ?, 'promotion' 
-            FROM users 
-            WHERE role = 'customer'";
-        $notification_stmt = mysqli_prepare($conn, $notification_query);
-        mysqli_stmt_bind_param($notification_stmt, "s", $message);
-        if (mysqli_stmt_execute($notification_stmt)) {
-            $success = "Notification sent successfully!";
-        } else {
-            $error = "Failed to send notification.";
+        $success_count = 0;
+        $error_count = 0;
+        
+        // Begin transaction
+        mysqli_begin_transaction($conn);
+        
+        try {
+            // Insert notifications in the database
+            $notification_query = "
+                INSERT INTO notifications (user_id, message, type) 
+                SELECT user_id, ?, 'promotion' 
+                FROM users 
+                WHERE role = 'customer'";
+            $notification_stmt = mysqli_prepare($conn, $notification_query);
+            mysqli_stmt_bind_param($notification_stmt, "s", $message);
+            
+            if (mysqli_stmt_execute($notification_stmt)) {
+                $affected_rows = mysqli_stmt_affected_rows($notification_stmt);
+                $success_count += $affected_rows;
+                $success = "Notification sent successfully to $affected_rows user(s)!";
+            } else {
+                throw new Exception("Failed to send notification to database: " . mysqli_error($conn));
+            }
+            mysqli_stmt_close($notification_stmt);
+            
+            // Send emails if requested
+            if ($send_email) {
+                // Get customer emails
+                $customers_query = "SELECT user_id, name, email FROM users WHERE role = 'customer'";
+                $customers_stmt = mysqli_prepare($conn, $customers_query);
+                mysqli_stmt_execute($customers_stmt);
+                $customers_result = mysqli_stmt_get_result($customers_stmt);
+                
+                $mailer = new Mailer();
+                $email_recipients = [];
+                
+                while ($customer = mysqli_fetch_assoc($customers_result)) {
+                    $email_recipients[] = [
+                        'email' => $customer['email'],
+                        'name' => $customer['name']
+                    ];
+                }
+                
+                mysqli_stmt_close($customers_stmt);
+                
+                // Send emails in bulk
+                if (!empty($email_recipients)) {
+                    $email_results = $mailer->sendBulkNotification($email_recipients, $subject, $message);
+                    
+                    $email_success_count = count(array_filter($email_results));
+                    $email_error_count = count($email_results) - $email_success_count;
+                    
+                    if ($email_error_count > 0) {
+                        $success .= " However, $email_error_count email(s) could not be sent.";
+                        
+                        // Log errors
+                        foreach ($mailer->getErrors() as $error_msg) {
+                            error_log("Email error: $error_msg");
+                        }
+                    } else {
+                        $success .= " Email notifications sent successfully to $email_success_count recipient(s).";
+                    }
+                }
+            }
+            
+            // Log action
+            $audit_query = "INSERT INTO audit_logs (user_id, action, table_name, details) VALUES (?, ?, ?, ?)";
+            $audit_stmt = mysqli_prepare($conn, $audit_query);
+            $action = "send_notification";
+            $table_name = "notifications";
+            $details = "Sent promotion: " . $message . ($send_email ? " (with email)" : "");
+            mysqli_stmt_bind_param($audit_stmt, "isss", $_SESSION['user_id'], $action, $table_name, $details);
+            mysqli_stmt_execute($audit_stmt);
+            mysqli_stmt_close($audit_stmt);
+            
+            mysqli_commit($conn);
+        } catch (Exception $e) {
+            mysqli_rollback($conn);
+            $error = $e->getMessage();
         }
-        mysqli_stmt_close($notification_stmt);
-
-        // Log action
-        $audit_query = "INSERT INTO audit_logs (user_id, action, table_name, details) VALUES (?, ?, ?, ?)";
-        $audit_stmt = mysqli_prepare($conn, $audit_query);
-        $action = "send_notification";
-        $table_name = "notifications";
-        $details = "Sent promotion: " . $message;
-        mysqli_stmt_bind_param($audit_stmt, "isss", $_SESSION['user_id'], $action, $table_name, $details);
-        mysqli_stmt_execute($audit_stmt);
-        mysqli_stmt_close($audit_stmt);
     } else {
         $error = "Message cannot be empty.";
     }
@@ -216,6 +279,81 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['send_notification'])) 
             background-color: #45a049;
         }
 
+        .notification-form .form-group {
+            margin-bottom: 15px;
+        }
+
+        .notification-form label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+            color: #333;
+        }
+
+        .notification-form input[type="text"] {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #e0e0e0;
+            border-radius: 4px;
+            font-size: 1rem;
+        }
+
+        .notification-form .checkbox-container {
+            display: block;
+            position: relative;
+            padding-left: 35px;
+            margin-bottom: 15px;
+            cursor: pointer;
+            font-size: 1rem;
+            user-select: none;
+        }
+
+        .notification-form .checkbox-container input {
+            position: absolute;
+            opacity: 0;
+            cursor: pointer;
+            height: 0;
+            width: 0;
+        }
+
+        .notification-form .checkmark {
+            position: absolute;
+            top: 0;
+            left: 0;
+            height: 20px;
+            width: 20px;
+            background-color: #eee;
+            border-radius: 4px;
+        }
+
+        .notification-form .checkbox-container:hover input ~ .checkmark {
+            background-color: #ccc;
+        }
+
+        .notification-form .checkbox-container input:checked ~ .checkmark {
+            background-color: #4CAF50;
+        }
+
+        .notification-form .checkmark:after {
+            content: "";
+            position: absolute;
+            display: none;
+        }
+
+        .notification-form .checkbox-container input:checked ~ .checkmark:after {
+            display: block;
+        }
+
+        .notification-form .checkbox-container .checkmark:after {
+            left: 7px;
+            top: 3px;
+            width: 5px;
+            height: 10px;
+            border: solid white;
+            border-width: 0 2px 2px 0;
+            transform: rotate(45deg);
+        }
+
         .quick-actions {
             display: flex;
             gap: 20px;
@@ -275,6 +413,12 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['send_notification'])) 
             margin-bottom: 8px;
         }
 
+        /* Content area styles to work with sidebar */
+        .content {
+            margin-left: 250px;
+            padding: 20px;
+        }
+
         @media (max-width: 768px) {
             .dashboard-grid {
                 grid-template-columns: 1fr;
@@ -287,12 +431,17 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['send_notification'])) 
             .quick-action-btn, .admin-actions .btn {
                 width: 100%;
             }
+            
+            .content {
+                margin-left: 0;
+            }
         }
     </style>
 </head>
 <body>
-    <?php include 'navbar.php'; ?>
-    <div class="container">
+    <?php include 'sidebar.php'; ?>
+    
+    <div class="content">
         <div class="dashboard-header">
             <h1 class="welcome-message">Admin Dashboard</h1>
         </div>
@@ -347,34 +496,31 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['send_notification'])) 
                 <div class="section-header">
                     <h2 class="section-title">Send Promotion Notification</h2>
                 </div>
-                <form method="POST" action="">
-                    <textarea name="message" placeholder="Enter promotion message" class="form-control" required></textarea>
-                    <button type="submit" name="send_notification" class="btn btn-primary">Send Notification</button>
+                <form method="POST" action="" class="notification-form">
+                    <div class="form-group">
+                        <label for="subject">Email Subject:</label>
+                        <input type="text" name="subject" id="subject" class="form-control" 
+                               value="New Notification from AgriMarket" 
+                               placeholder="Email subject line">
+                    </div>
+                    <div class="form-group">
+                        <label for="message">Notification Message:</label>
+                        <textarea name="message" id="message" placeholder="Enter promotion message" 
+                                  class="form-control" required></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label class="checkbox-container">
+                            <input type="checkbox" name="send_email" value="1" checked>
+                            Also send as email to customers
+                            <span class="checkmark"></span>
+                        </label>
+                    </div>
+                    <button type="submit" name="send_notification" class="btn btn-primary">
+                        <i class="fas fa-paper-plane"></i> Send Notification
+                    </button>
                 </form>
             </div>
         </div>
-
-        <div class="admin-actions">
-            <a href="audit_logs.php" class="btn btn-primary">
-                <i class="fas fa-history"></i> View Audit Logs
-            </a>
-            <a href="manage_users.php" class="btn btn-primary">
-                <i class="fas fa-users"></i> Manage Users
-            </a>
-            <a href="manage_vendors.php" class="btn btn-primary">
-                <i class="fas fa-store"></i> Manage Vendors
-            </a>
-            <a href="manage_products.php" class="btn btn-primary">
-                <i class="fas fa-box"></i> Manage Products
-            </a>
-            <a href="manage_orders.php" class="btn btn-primary">
-                <i class="fas fa-shopping-cart"></i> Manage Orders
-            </a>
-            <a href="settings.php" class="btn btn-secondary">
-                <i class="fas fa-cog"></i> Settings
-            </a>
-        </div>
     </div>
-    <?php include 'footer.php'; ?>
 </body>
 </html>

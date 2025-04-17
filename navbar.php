@@ -41,7 +41,6 @@ if (isset($_SESSION['user_id']) && isset($conn) && $_SESSION['role'] === 'custom
             <?php if (isset($_SESSION['user_id'])): ?>
                 <?php if ($_SESSION['role'] === 'admin'): ?>
                     <li><a href="admin_dashboard.php" class="nav-link <?php echo $current_page === 'admin_dashboard.php' ? 'active' : ''; ?>">Admin Dashboard</a></li>
-                    <li><a href="admin/notifications.php" class="nav-link <?php echo $current_page === 'admin/notifications.php' ? 'active' : ''; ?>">Notifications</a></li>
                 <?php elseif ($_SESSION['role'] === 'vendor'): ?>
                     <li><a href="product_upload.php" class="nav-link <?php echo $current_page === 'product_upload.php' ? 'active' : ''; ?>">Upload Product</a></li>
                     <li><a href="vendor_reports.php" class="nav-link <?php echo $current_page === 'vendor_reports.php' ? 'active' : ''; ?>">Reports</a></li>

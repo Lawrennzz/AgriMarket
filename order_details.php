@@ -192,6 +192,44 @@ if ($role === 'vendor' && isset($_POST['status'])) {
         }
         mysqli_stmt_close($history_stmt);
 
+        // Send order status update email to the customer
+        try {
+            require_once 'includes/Mailer.php';
+            
+            // Get user details
+            $user_query = "SELECT u.name, u.email FROM users u 
+                          JOIN orders o ON u.user_id = o.user_id 
+                          WHERE o.order_id = ?";
+            $user_stmt = mysqli_prepare($conn, $user_query);
+            mysqli_stmt_bind_param($user_stmt, "i", $order_id);
+            mysqli_stmt_execute($user_stmt);
+            $user_result = mysqli_stmt_get_result($user_stmt);
+            $user_data = mysqli_fetch_assoc($user_result);
+            
+            if ($user_data) {
+                // Get order details
+                $order_query_for_email = "SELECT * FROM orders WHERE order_id = ?";
+                $order_stmt_for_email = mysqli_prepare($conn, $order_query_for_email);
+                mysqli_stmt_bind_param($order_stmt_for_email, "i", $order_id);
+                mysqli_stmt_execute($order_stmt_for_email);
+                $order_result_for_email = mysqli_stmt_get_result($order_stmt_for_email);
+                $order_data = mysqli_fetch_assoc($order_result_for_email);
+                
+                // Send the status update email
+                $mailer = new Mailer();
+                $mailer->sendOrderStatusUpdate(
+                    $order_id,
+                    $user_data['email'],
+                    $user_data['name'],
+                    $new_status,
+                    $order_data
+                );
+            }
+        } catch (Exception $e) {
+            // Log the error but don't disrupt the status update process
+            error_log("Failed to send order status update email: " . $e->getMessage());
+        }
+
         // Log to audit_logs
         $log_query = "INSERT INTO audit_logs (user_id, action, table_name, record_id, details) VALUES (?, ?, ?, ?, ?)";
         $log_stmt = mysqli_prepare($conn, $log_query);
@@ -481,6 +519,28 @@ $timeline_result = mysqli_stmt_get_result($timeline_stmt);
             border: 1px solid #f5c6cb;
         }
 
+        .payment-section {
+            margin-bottom: 2rem;
+            padding: 1rem;
+            background: #f8f9fa;
+            border-radius: var(--border-radius);
+            border-left: 4px solid #28a745;
+        }
+        
+        .btn-payment {
+            display: inline-block;
+            background: #28a745;
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: var(--border-radius);
+            text-decoration: none;
+            margin-top: 1rem;
+        }
+        
+        .btn-payment:hover {
+            background: #218838;
+        }
+
         @media (max-width: 992px) {
             .details-container {
                 grid-template-columns: 1fr;
@@ -576,6 +636,64 @@ $timeline_result = mysqli_stmt_get_result($timeline_stmt);
                             </div>
                         </div>
                     <?php endwhile; ?>
+                </div>
+
+                <div class="order-item" id="order-details">
+                    <div class="section-title">Order Details</div>
+                    <div class="info-row">
+                        <div class="info-label">Order ID:</div>
+                        <div class="info-value"><?php echo htmlspecialchars($order['order_id']); ?></div>
+                    </div>
+                    <div class="info-row">
+                        <div class="info-label">Date:</div>
+                        <div class="info-value"><?php echo htmlspecialchars(date('F j, Y, g:i a', strtotime($order['created_at']))); ?></div>
+                    </div>
+                    <div class="info-row">
+                        <div class="info-label">Status:</div>
+                        <div class="info-value">
+                            <span class="order-status status-<?php echo htmlspecialchars(strtolower($order['status'])); ?>">
+                                <?php echo htmlspecialchars(ucfirst($order['status'])); ?>
+                            </span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Payment Information Section -->
+                <div class="payment-section">
+                    <div class="section-title">Payment Information</div>
+                    <div class="info-row">
+                        <div class="info-label">Method:</div>
+                        <div class="info-value">
+                            <?php 
+                            if (!empty($order['payment_method'])) {
+                                echo htmlspecialchars(ucwords(str_replace('_', ' ', $order['payment_method'])));
+                            } else {
+                                $shipping_address = json_decode($order['shipping_address'], true);
+                                echo !empty($shipping_address['payment_method']) ? 
+                                    htmlspecialchars(ucwords(str_replace('_', ' ', $shipping_address['payment_method']))) : 
+                                    'Not specified';
+                            }
+                            ?>
+                        </div>
+                    </div>
+                    <div class="info-row">
+                        <div class="info-label">Status:</div>
+                        <div class="info-value">
+                            <span class="order-status status-<?php echo htmlspecialchars(strtolower($order['payment_status'] ?? 'pending')); ?>">
+                                <?php echo htmlspecialchars(ucfirst($order['payment_status'] ?? 'pending')); ?>
+                            </span>
+                        </div>
+                    </div>
+                    <?php if (!empty($order['transaction_id'])): ?>
+                    <div class="info-row">
+                        <div class="info-label">Transaction ID:</div>
+                        <div class="info-value"><?php echo htmlspecialchars($order['transaction_id']); ?></div>
+                    </div>
+                    <?php endif; ?>
+                    
+                    <a href="check_order_payment.php?id=<?php echo htmlspecialchars($order['order_id']); ?>" class="btn-payment">
+                        <i class="fas fa-credit-card"></i> View Payment Details
+                    </a>
                 </div>
             </div>
 
