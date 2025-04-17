@@ -232,37 +232,39 @@
             margin-bottom: 1.5rem;
         }
 
-        .add-to-cart {
-            flex: 1;
-            padding: 0.75rem;
-            background: var(--primary-color);
-            color: white;
-            border: none;
+        .product-actions .btn {
+            padding: 0.75rem 1rem;
             border-radius: 4px;
+            font-weight: 500;
+            text-align: center;
             cursor: pointer;
-            transition: var(--transition);
+            transition: all 0.3s ease;
+            font-size: 1rem;
             display: flex;
             align-items: center;
             justify-content: center;
             gap: 0.5rem;
+            text-decoration: none;
         }
 
-        .add-to-cart:hover {
-            background: var(--primary-dark);
+        .product-actions .btn-primary {
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
         }
 
-        .view-details {
-            padding: 0.75rem;
-            border: 1px solid var(--primary-color);
-            color: var(--primary-color);
-            background: transparent;
-            border-radius: 4px;
-            cursor: pointer;
-            transition: var(--transition);
+        .product-actions .btn-primary:hover {
+            background-color: var(--primary-dark);
         }
 
-        .view-details:hover {
-            background: rgba(76, 175, 80, 0.1);
+        .product-actions .btn-secondary {
+            background-color: #2196F3;
+            color: white;
+            border: none;
+        }
+
+        .product-actions .btn-secondary:hover {
+            background-color: #0b7dda;
         }
 
         @media (max-width: 768px) {
@@ -273,6 +275,40 @@
             .main-image {
                 height: 300px;
             }
+        }
+
+        .btn {
+            padding: 12px 15px;
+            font-size: 14px;
+            text-align: center;
+            cursor: pointer;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            transition: all 0.3s ease;
+            border: none;
+            text-decoration: none;
+            font-weight: 500;
+        }
+
+        .btn-primary {
+            background-color: #4CAF50;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background-color: #3e8e41;
+        }
+
+        .btn-secondary {
+            background-color: #2196F3;
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background-color: #0b7dda;
         }
     </style>
 </head>
@@ -333,12 +369,31 @@
                 </div>
 
                 <div class="product-actions">
-                    <?php if (isset($product['vendor_user_id']) && $product['vendor_user_id'] == $this->getUserId()): ?>
-                        <a href="edit_delete_product.php?id=<?php echo $product['product_id']; ?>" class="btn btn-primary">Edit</a>
-                    <?php elseif ($this->getRole() !== 'vendor'): // Only show Add to Cart for non-vendors ?>
-                        <button onclick="addToCart(<?php echo $product['product_id']; ?>)" class="add-to-cart">
+                    <?php if (isset($product['vendor_user_id']) && $product['vendor_user_id'] == $this->getUserId()): // Vendor viewing own product ?>
+                        <a href="edit_delete_product.php?id=<?php echo $product['product_id']; ?>" class="btn btn-primary" style="flex: 1;">
+                            <i class="fas fa-edit"></i> Edit
+                        </a>
+                        <a href="compare_products.php?add=<?php echo $product['product_id']; ?>" class="btn btn-secondary" style="flex: 1;">
+                            <i class="fas fa-balance-scale"></i> Add to Compare
+                        </a>
+                    
+                    <?php elseif ($this->getRole() === 'vendor'): // Vendor viewing other vendor's product ?>
+                        <a href="compare_products.php?add=<?php echo $product['product_id']; ?>" class="btn btn-secondary" style="flex: 1; width: 100%;">
+                            <i class="fas fa-balance-scale"></i> Add to Compare
+                        </a>
+                    
+                    <?php else: // Customer view ?>
+                        <button onclick="addToCart(<?php echo $product['product_id']; ?>)" class="btn btn-primary" style="flex: 1;">
                             <i class="fas fa-shopping-cart"></i> Add to Cart
                         </button>
+                        <a href="wishlist.php?add=<?php echo $product['product_id']; ?>&redirect=product.php?id=<?php echo $product['product_id']; ?>" 
+                           class="btn btn-secondary" style="flex: 1;">
+                            <i class="far fa-heart"></i> Add to Wishlist
+                        </a>
+                        <a href="compare_products.php?add=<?php echo $product['product_id']; ?>" 
+                           class="btn btn-secondary" style="flex: 1;">
+                            <i class="fas fa-balance-scale"></i> Add to Compare
+                        </a>
                     <?php endif; ?>
                 </div>
 

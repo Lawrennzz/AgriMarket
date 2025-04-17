@@ -218,5 +218,20 @@
             </div>
         </div>
     </footer>
+
+<?php
+// Show comparison badge if there are products to compare
+if (isset($_SESSION['compare_products']) && !empty($_SESSION['compare_products'])) {
+    $compare_count = count($_SESSION['compare_products']);
+    ?>
+    <a href="compare_products.php" class="comparison-badge">
+        <i class="fas fa-balance-scale"></i>
+        <span>Compare Products</span>
+        <span class="comparison-count"><?php echo $compare_count; ?></span>
+    </a>
+    <?php
+}
+?>
+
 </body>
 </html>

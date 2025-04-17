@@ -26,9 +26,23 @@ $admin_prefix = $in_admin_dir ? '../' : '';
         <li class="<?php echo $current_page === 'manage_vendors.php' ? 'active' : ''; ?>">
             <a href="<?php echo $admin_prefix; ?>manage_vendors.php"><i class="fas fa-store"></i> Manage Vendors</a>
         </li>
-        <li class="<?php echo $current_page === 'manage_staff.php' ? 'active' : ''; ?>">
-            <a href="<?php echo $admin_prefix; ?>manage_staff.php"><i class="fas fa-users-cog"></i> Manage Staff</a>
+        
+        <!-- Staff Management Section -->
+        <li class="sidebar-dropdown <?php echo in_array($current_page, ['manage_staff.php', 'view_staff_tasks.php', 'staff_performance.php', 'assign_tasks.php']) ? 'active' : ''; ?>">
+            <a href="#"><i class="fas fa-users-cog"></i> Staff Management</a>
+            <ul class="sidebar-submenu" style="display: <?php echo in_array($current_page, ['manage_staff.php', 'view_staff_tasks.php', 'staff_performance.php', 'assign_tasks.php']) ? 'block' : 'none'; ?>;">
+                <li class="<?php echo $current_page === 'manage_staff.php' ? 'active' : ''; ?>">
+                    <a href="<?php echo $admin_prefix; ?>manage_staff.php"><i class="fas fa-user-cog"></i> Manage Staff</a>
+                </li>
+                <li class="<?php echo $current_page === 'assign_tasks.php' ? 'active' : ''; ?>">
+                    <a href="<?php echo $admin_prefix; ?>admin/assign_tasks.php"><i class="fas fa-tasks"></i> Assign Tasks</a>
+                </li>
+                <li class="<?php echo $current_page === 'staff_performance.php' ? 'active' : ''; ?>">
+                    <a href="<?php echo $admin_prefix; ?>admin/staff_performance.php"><i class="fas fa-chart-pie"></i> Performance Tracking</a>
+                </li>
+            </ul>
         </li>
+        
         <li class="<?php echo $current_page === 'manage_products.php' ? 'active' : ''; ?>">
             <a href="<?php echo $admin_prefix; ?>manage_products.php"><i class="fas fa-box"></i> Manage Products</a>
         </li>
@@ -40,6 +54,9 @@ $admin_prefix = $in_admin_dir ? '../' : '';
         </li>
         <li class="<?php echo $current_page === 'reports.php' ? 'active' : ''; ?>">
             <a href="<?php echo $admin_prefix; ?>admin/reports.php"><i class="fas fa-chart-bar"></i> Reports & Analytics</a>
+        </li>
+        <li class="<?php echo $current_page === 'advanced_reports.php' ? 'active' : ''; ?>">
+            <a href="<?php echo $admin_prefix; ?>admin/advanced_reports.php"><i class="fas fa-chart-line"></i> Advanced Analytics</a>
         </li>
         <li class="<?php echo $current_page === 'notifications.php' ? 'active' : ''; ?>">
             <a href="<?php echo $in_admin_dir ? 'notifications.php' : 'admin/notifications.php'; ?>"><i class="fas fa-bell"></i> Notifications</a>
@@ -114,6 +131,30 @@ $admin_prefix = $in_admin_dir ? '../' : '';
     color: white;
 }
 
+/* Dropdown styles */
+.sidebar-dropdown > a:after {
+    content: '\f105';
+    font-family: 'Font Awesome 5 Free';
+    font-weight: 900;
+    float: right;
+    transition: transform 0.3s;
+}
+
+.sidebar-dropdown.active > a:after {
+    transform: rotate(90deg);
+}
+
+.sidebar-submenu {
+    padding-left: 20px;
+    list-style: none;
+    display: none;
+}
+
+.sidebar-submenu li a {
+    padding: 8px 20px;
+    font-size: 0.9rem;
+}
+
 .content {
     margin-left: 250px;
     padding: 20px;
@@ -130,4 +171,30 @@ $admin_prefix = $in_admin_dir ? '../' : '';
         margin-left: 0;
     }
 }
-</style> 
+</style>
+
+<script>
+// Toggle dropdown menus
+document.addEventListener('DOMContentLoaded', function() {
+    const dropdowns = document.querySelectorAll('.sidebar-dropdown > a');
+    
+    dropdowns.forEach(dropdown => {
+        dropdown.addEventListener('click', function(e) {
+            e.preventDefault();
+            
+            const parent = this.parentElement;
+            const submenu = this.nextElementSibling;
+            
+            // Toggle active class
+            parent.classList.toggle('active');
+            
+            // Toggle submenu display
+            if (submenu.style.display === 'none' || submenu.style.display === '') {
+                submenu.style.display = 'block';
+            } else {
+                submenu.style.display = 'none';
+            }
+        });
+    });
+});
+</script> 

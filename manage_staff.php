@@ -328,6 +328,25 @@ if ($staff_stmt) {
             gap: 8px;
         }
         
+        .header-actions {
+            display: flex;
+            gap: 10px;
+        }
+        
+        .secondary-button {
+            background-color: #2196F3;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            text-decoration: none;
+        }
+        
         @media (max-width: 768px) {
             .staff-table {
                 display: block;
@@ -342,6 +361,16 @@ if ($staff_stmt) {
             .modal-content {
                 width: 90%;
             }
+            
+            .header-actions {
+                flex-direction: column;
+                width: 100%;
+            }
+            
+            .add-staff-btn, .secondary-button {
+                width: 100%;
+                justify-content: center;
+            }
         }
     </style>
 </head>
@@ -351,9 +380,17 @@ if ($staff_stmt) {
     <div class="container">
         <div class="page-header">
             <h1><i class="fas fa-users-cog"></i> Manage Staff</h1>
-            <button class="add-staff-btn" onclick="window.location.href='add_staff.php'">
-                <i class="fas fa-user-plus"></i> Add New Staff
-            </button>
+            <div class="header-actions">
+                <a href="admin/assign_tasks.php" class="secondary-button">
+                    <i class="fas fa-tasks"></i> Bulk Assign Tasks
+                </a>
+                <a href="admin/staff_performance.php" class="secondary-button">
+                    <i class="fas fa-chart-pie"></i> Performance Dashboard
+                </a>
+                <button class="add-staff-btn" onclick="window.location.href='add_staff.php'">
+                    <i class="fas fa-user-plus"></i> Add New Staff
+                </button>
+            </div>
         </div>
         
         <?php if (!empty($success_message)): ?>
@@ -404,6 +441,9 @@ if ($staff_stmt) {
                                 <button class="btn-action btn-task" onclick="openTaskModal(<?php echo $staff['user_id']; ?>, '<?php echo htmlspecialchars($staff['name'], ENT_QUOTES, 'UTF-8'); ?>')">
                                     <i class="fas fa-tasks"></i> Assign Task
                                 </button>
+                                <a href="view_staff_tasks.php?id=<?php echo $staff['user_id']; ?>" class="btn-action btn-task" style="text-decoration: none;">
+                                    <i class="fas fa-list-check"></i> View Tasks
+                                </a>
                                 <button class="btn-action btn-edit" onclick="window.location.href='edit_staff.php?id=<?php echo $staff['user_id']; ?>'">
                                     <i class="fas fa-edit"></i> Edit
                                 </button>

@@ -214,6 +214,32 @@ CREATE TABLE payment_logs (
     FOREIGN KEY (order_id) REFERENCES orders(order_id) ON DELETE SET NULL
 );
 
+-- Extended Analytics table
+CREATE TABLE analytics_extended (
+    analytic_id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT,
+    vendor_id INT,
+    type VARCHAR(50) NOT NULL, -- More flexibility with types: 'search', 'visit', 'order', 'wishlist', 'cart', 'compare', etc.
+    product_id INT,
+    category_id INT,
+    quantity INT DEFAULT 1,
+    session_id VARCHAR(255),
+    device_type VARCHAR(50),
+    referrer VARCHAR(255),
+    details TEXT,
+    recorded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE SET NULL,
+    FOREIGN KEY (vendor_id) REFERENCES vendors(vendor_id) ON DELETE SET NULL,
+    FOREIGN KEY (product_id) REFERENCES products(product_id) ON DELETE SET NULL,
+    FOREIGN KEY (category_id) REFERENCES categories(category_id) ON DELETE SET NULL
+);
+
+CREATE INDEX idx_analytics_extended_type ON analytics_extended(type);
+CREATE INDEX idx_analytics_extended_user ON analytics_extended(user_id);
+CREATE INDEX idx_analytics_extended_vendor ON analytics_extended(vendor_id);
+CREATE INDEX idx_analytics_extended_product ON analytics_extended(product_id);
+CREATE INDEX idx_analytics_extended_date ON analytics_extended(recorded_at);
+
 -- Indexes for performance
 CREATE INDEX idx_user_email ON users(email);
 CREATE INDEX idx_product_vendor_id ON products(vendor_id);

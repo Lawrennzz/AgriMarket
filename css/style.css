@@ -317,4 +317,28 @@ tr:hover {
     .btn {
         padding: 0.5rem 1rem;
     }
+}
+
+/* Add styling for the view-more link in stat cards */
+.view-more {
+    display: inline-block;
+    margin-top: 10px;
+    font-size: 0.85rem;
+    color: var(--primary-color);
+    text-decoration: none;
+    transition: color 0.2s;
+}
+
+.view-more i {
+    font-size: 0.7rem;
+    margin-left: 5px;
+    transition: transform 0.2s;
+}
+
+.view-more:hover {
+    color: var(--primary-dark);
+}
+
+.view-more:hover i {
+    transform: translateX(3px);
 } 

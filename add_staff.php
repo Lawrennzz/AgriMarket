@@ -20,7 +20,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['add_staff'])) {
     $email = htmlspecialchars($_POST['email'] ?? '', ENT_QUOTES, 'UTF-8');
     $password = $_POST['password'] ?? '';
     $position = htmlspecialchars($_POST['position'] ?? '', ENT_QUOTES, 'UTF-8');
-    $phone = htmlspecialchars($_POST['phone'] ?? '', ENT_QUOTES, 'UTF-8');
+    $phone_number = htmlspecialchars($_POST['phone_number'] ?? '', ENT_QUOTES, 'UTF-8');
     
     // Validate input
     $errors = [];
@@ -59,9 +59,14 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['add_staff'])) {
         
         try {
             // Insert user record
-            $user_query = "INSERT INTO users (name, email, password, role, phone) VALUES (?, ?, ?, 'staff', ?)";
+            $user_query = "INSERT INTO users (name, email, password, role, phone_number) VALUES (?, ?, ?, 'staff', ?)";
             $user_stmt = mysqli_prepare($conn, $user_query);
-            mysqli_stmt_bind_param($user_stmt, "ssss", $name, $email, $password_hash, $phone);
+            
+            if (!$user_stmt) {
+                throw new Exception("Failed to prepare statement: " . mysqli_error($conn));
+            }
+            
+            mysqli_stmt_bind_param($user_stmt, "ssss", $name, $email, $password_hash, $phone_number);
             
             if (!mysqli_stmt_execute($user_stmt)) {
                 throw new Exception("Error adding user: " . mysqli_error($conn));
@@ -73,6 +78,11 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['add_staff'])) {
             // Insert staff details
             $staff_query = "INSERT INTO staff_details (user_id, position) VALUES (?, ?)";
             $staff_stmt = mysqli_prepare($conn, $staff_query);
+            
+            if (!$staff_stmt) {
+                throw new Exception("Failed to prepare staff statement: " . mysqli_error($conn));
+            }
+            
             mysqli_stmt_bind_param($staff_stmt, "is", $user_id, $position);
             
             if (!mysqli_stmt_execute($staff_stmt)) {
@@ -84,6 +94,11 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['add_staff'])) {
             // Log action
             $audit_query = "INSERT INTO audit_logs (user_id, action, table_name, record_id, details) VALUES (?, ?, ?, ?, ?)";
             $audit_stmt = mysqli_prepare($conn, $audit_query);
+            
+            if (!$audit_stmt) {
+                throw new Exception("Failed to prepare audit statement: " . mysqli_error($conn));
+            }
+            
             $action = "create";
             $table = "users";
             $details = "Added new staff member: " . $name;
@@ -250,8 +265,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['add_staff'])) {
             </div>
             
             <div class="form-group">
-                <label for="phone">Phone Number</label>
-                <input type="tel" id="phone" name="phone" class="form-control">
+                <label for="phone_number">Phone Number</label>
+                <input type="tel" id="phone_number" name="phone_number" class="form-control">
             </div>
             
             <div class="form-group">

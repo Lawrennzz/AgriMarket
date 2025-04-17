@@ -328,6 +328,7 @@ if ($role === 'vendor') {
                     <i class="fas fa-dollar-sign"></i>
                     <div class="stat-value">$<?php echo number_format($total_sales['total'], 2); ?></div>
                     <div class="stat-label">Total Sales</div>
+                    <a href="vendor_advanced_analytics.php" class="view-more">Advanced Analytics <i class="fas fa-arrow-right"></i></a>
                 </div>
                 <div class="stat-card">
                     <i class="fas fa-shopping-cart"></i>

@@ -303,6 +303,10 @@
                             <div class="product-actions">
                                 <?php if ($product['vendor_user_id'] == $this->getUserId()): ?>
                                     <a href="edit_delete_product.php?id=<?php echo $product['product_id']; ?>" class="btn btn-primary">Edit</a>
+                                    <a href="compare_products.php?add=<?php echo $product['product_id']; ?>" 
+                                       class="view-details" title="Add to Compare">
+                                        <i class="fas fa-balance-scale"></i>
+                                    </a>
                                 <?php elseif ($this->getRole() !== 'vendor'): // Only show Add to Cart for non-vendors ?>
                                     <button onclick="addToCart(<?php echo $product['product_id']; ?>)" class="add-to-cart">
                                         <i class="fas fa-shopping-cart"></i> Add to Cart
@@ -310,6 +314,15 @@
                                     <a href="wishlist.php?add=<?php echo $product['product_id']; ?>&redirect=products.php<?php echo isset($_SERVER['QUERY_STRING']) ? '?' . $_SERVER['QUERY_STRING'] : ''; ?>" 
                                        class="view-details" title="Add to Wishlist">
                                         <i class="far fa-heart"></i>
+                                    </a>
+                                    <a href="compare_products.php?add=<?php echo $product['product_id']; ?>" 
+                                       class="view-details" title="Add to Compare">
+                                        <i class="fas fa-balance-scale"></i>
+                                    </a>
+                                <?php else: // Vendor viewing other vendor's products ?>
+                                    <a href="compare_products.php?add=<?php echo $product['product_id']; ?>" 
+                                       class="view-details" title="Add to Compare">
+                                        <i class="fas fa-balance-scale"></i>
                                     </a>
                                 <?php endif; ?>
                                 <a href="product.php?id=<?php echo $product['product_id']; ?>" class="view-details">

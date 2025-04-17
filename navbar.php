@@ -38,6 +38,8 @@ if (isset($_SESSION['user_id']) && isset($conn) && $_SESSION['role'] === 'custom
         <ul class="navbar-nav">
             <li><a href="index.php" class="nav-link <?php echo $current_page === 'index.php' ? 'active' : ''; ?>">Home</a></li>
             <li><a href="products.php" class="nav-link <?php echo $current_page === 'products.php' ? 'active' : ''; ?>">Products</a></li>
+            <li><a href="compare_products.php" class="nav-link <?php echo $current_page === 'compare_products.php' ? 'active' : ''; ?>">Compare</a></li>
+            <li><a href="vendors.php" class="nav-link <?php echo $current_page === 'vendors.php' ? 'active' : ''; ?>">Vendors</a></li>
             <?php if (isset($_SESSION['user_id'])): ?>
                 <?php if ($_SESSION['role'] === 'admin'): ?>
                     <li><a href="admin_dashboard.php" class="nav-link <?php echo $current_page === 'admin_dashboard.php' ? 'active' : ''; ?>">Admin Dashboard</a></li>

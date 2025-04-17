@@ -348,6 +348,25 @@ if (!empty($compare_products)) {
             background-color: rgba(255, 193, 7, 0.2);
         }
         
+        .add-more-section {
+            background: white;
+            border-radius: 8px;
+            padding: 2rem;
+            margin-top: 2rem;
+            text-align: center;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+        
+        .add-more-section h2 {
+            margin-bottom: 1rem;
+            color: var(--dark-gray);
+        }
+        
+        .add-more-section p {
+            margin-bottom: 1.5rem;
+            color: var(--medium-gray);
+        }
+        
         @media (max-width: 768px) {
             .compare-table th {
                 width: 100px;
@@ -520,8 +539,9 @@ if (!empty($compare_products)) {
                             <?php if (isset($products[$product_id])): ?>
                                 <td>
                                     <?php 
-                                    $specs = json_decode($products[$product_id]['specifications'], true);
-                                    if (is_array($specs) && !empty($specs)):
+                                    if (isset($products[$product_id]['specifications']) && !empty($products[$product_id]['specifications'])) {
+                                        $specs = json_decode($products[$product_id]['specifications'], true);
+                                        if (is_array($specs) && !empty($specs)):
                                     ?>
                                         <ul>
                                             <?php foreach ($specs as $key => $value): ?>
@@ -530,7 +550,10 @@ if (!empty($compare_products)) {
                                         </ul>
                                     <?php else: ?>
                                         <p>No specifications available</p>
-                                    <?php endif; ?>
+                                    <?php endif;
+                                    } else { ?>
+                                        <p>No specifications available</p>
+                                    <?php } ?>
                                 </td>
                             <?php endif; ?>
                         <?php endforeach; ?>
@@ -555,6 +578,16 @@ if (!empty($compare_products)) {
                 <p>Add products to compare their features side by side.</p>
                 <a href="products.php">
                     <i class="fas fa-shopping-basket"></i> Browse Products
+                </a>
+            </div>
+        <?php endif; ?>
+        
+        <?php if (count($compare_products) > 0 && count($compare_products) < 4): ?>
+            <div class="add-more-section">
+                <h2>Add More Products to Compare</h2>
+                <p>You can compare up to 4 products. Add more to make a better comparison.</p>
+                <a href="products.php" class="btn btn-primary">
+                    <i class="fas fa-plus"></i> Browse More Products
                 </a>
             </div>
         <?php endif; ?>
