@@ -24,9 +24,6 @@ if (!isset($_SESSION['csrf_token'])) {
     $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
 }
 
-// Get database connection
-function getConnection() {
-    global $conn;
-    return $conn;
-}
+// Remove the function to avoid redeclaration
+// Note: getConnection() is already defined in db_connection.php
 ?> 

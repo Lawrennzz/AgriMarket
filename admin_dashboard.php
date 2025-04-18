@@ -69,22 +69,22 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['send_notification'])) 
         
         try {
             // Insert notifications in the database
-            $notification_query = "
-                INSERT INTO notifications (user_id, message, type) 
-                SELECT user_id, ?, 'promotion' 
-                FROM users 
-                WHERE role = 'customer'";
-            $notification_stmt = mysqli_prepare($conn, $notification_query);
-            mysqli_stmt_bind_param($notification_stmt, "s", $message);
+        $notification_query = "
+            INSERT INTO notifications (user_id, message, type) 
+            SELECT user_id, ?, 'promotion' 
+            FROM users 
+            WHERE role = 'customer'";
+        $notification_stmt = mysqli_prepare($conn, $notification_query);
+        mysqli_stmt_bind_param($notification_stmt, "s", $message);
             
-            if (mysqli_stmt_execute($notification_stmt)) {
+        if (mysqli_stmt_execute($notification_stmt)) {
                 $affected_rows = mysqli_stmt_affected_rows($notification_stmt);
                 $success_count += $affected_rows;
                 $success = "Notification sent successfully to $affected_rows user(s)!";
-            } else {
+        } else {
                 throw new Exception("Failed to send notification to database: " . mysqli_error($conn));
-            }
-            mysqli_stmt_close($notification_stmt);
+        }
+        mysqli_stmt_close($notification_stmt);
             
             // Send emails if requested
             if ($send_email) {
@@ -125,16 +125,16 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['send_notification'])) 
                     }
                 }
             }
-            
-            // Log action
-            $audit_query = "INSERT INTO audit_logs (user_id, action, table_name, details) VALUES (?, ?, ?, ?)";
-            $audit_stmt = mysqli_prepare($conn, $audit_query);
-            $action = "send_notification";
-            $table_name = "notifications";
+
+        // Log action
+        $audit_query = "INSERT INTO audit_logs (user_id, action, table_name, details) VALUES (?, ?, ?, ?)";
+        $audit_stmt = mysqli_prepare($conn, $audit_query);
+        $action = "send_notification";
+        $table_name = "notifications";
             $details = "Sent promotion: " . $message . ($send_email ? " (with email)" : "");
-            mysqli_stmt_bind_param($audit_stmt, "isss", $_SESSION['user_id'], $action, $table_name, $details);
-            mysqli_stmt_execute($audit_stmt);
-            mysqli_stmt_close($audit_stmt);
+        mysqli_stmt_bind_param($audit_stmt, "isss", $_SESSION['user_id'], $action, $table_name, $details);
+        mysqli_stmt_execute($audit_stmt);
+        mysqli_stmt_close($audit_stmt);
             
             mysqli_commit($conn);
         } catch (Exception $e) {
@@ -443,7 +443,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['send_notification'])) 
     
     <div class="content">
         <div class="dashboard-header">
-            <h1 class="welcome-message">Admin Dashboard</h1>
+        <h1 class="welcome-message">Admin Dashboard</h1>
         </div>
 
         <?php if (isset($success)): ?>
@@ -467,32 +467,32 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['send_notification'])) 
         </div>
 
         <div class="dashboard-grid">
-            <div class="dashboard-section">
+        <div class="dashboard-section">
                 <div class="section-header">
-                    <h2 class="section-title">Recent Activity</h2>
+            <h2 class="section-title">Recent Activity</h2>
                     <a href="audit_logs.php" class="btn btn-primary">View All</a>
                 </div>
                 <?php if (mysqli_num_rows($activity_result) > 0): ?>
-                    <?php while ($activity = mysqli_fetch_assoc($activity_result)): ?>
-                        <div class="activity-card">
-                            <p>
-                                <?php echo htmlspecialchars($activity['name'], ENT_QUOTES, 'UTF-8'); ?> 
-                                performed <?php echo htmlspecialchars($activity['action'], ENT_QUOTES, 'UTF-8'); ?> 
-                                on <?php echo htmlspecialchars($activity['table_name'], ENT_QUOTES, 'UTF-8'); ?> 
-                                (ID: <?php echo (int)$activity['record_id']; ?>) 
-                                at <?php echo htmlspecialchars($activity['created_at'], ENT_QUOTES, 'UTF-8'); ?>
-                            </p>
-                            <?php if ($activity['details']): ?>
-                                <p>Details: <?php echo htmlspecialchars($activity['details'], ENT_QUOTES, 'UTF-8'); ?></p>
-                            <?php endif; ?>
-                        </div>
-                    <?php endwhile; ?>
+            <?php while ($activity = mysqli_fetch_assoc($activity_result)): ?>
+                <div class="activity-card">
+                    <p>
+                        <?php echo htmlspecialchars($activity['name'], ENT_QUOTES, 'UTF-8'); ?> 
+                        performed <?php echo htmlspecialchars($activity['action'], ENT_QUOTES, 'UTF-8'); ?> 
+                        on <?php echo htmlspecialchars($activity['table_name'], ENT_QUOTES, 'UTF-8'); ?> 
+                        (ID: <?php echo (int)$activity['record_id']; ?>) 
+                        at <?php echo htmlspecialchars($activity['created_at'], ENT_QUOTES, 'UTF-8'); ?>
+                    </p>
+                    <?php if ($activity['details']): ?>
+                        <p>Details: <?php echo htmlspecialchars($activity['details'], ENT_QUOTES, 'UTF-8'); ?></p>
+                    <?php endif; ?>
+                </div>
+            <?php endwhile; ?>
                 <?php else: ?>
                     <p>No recent activity found.</p>
                 <?php endif; ?>
-            </div>
+        </div>
 
-            <div class="dashboard-section">
+        <div class="dashboard-section">
                 <div class="section-header">
                     <h2 class="section-title">Send Promotion Notification</h2>
                 </div>
@@ -514,12 +514,12 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['send_notification'])) 
                             Also send as email to customers
                             <span class="checkmark"></span>
                         </label>
-                    </div>
+        </div>
                     <button type="submit" name="send_notification" class="btn btn-primary">
                         <i class="fas fa-paper-plane"></i> Send Notification
                     </button>
-                </form>
-            </div>
+            </form>
+        </div>
         </div>
     </div>
 </body>

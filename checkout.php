@@ -48,14 +48,14 @@ if ($cart_stmt) {
     // Calculate cart totals
     while ($item = mysqli_fetch_assoc($cart_result)) {
         $cart_items[] = $item;
-        $subtotal += $item['price'] * $item['quantity'];
+    $subtotal += $item['price'] * $item['quantity'];
         $item_count += $item['quantity'];
-    }
+}
 
     $shipping = $item_count > 0 ? 5.00 : 0; // Fixed shipping cost
     $tax = $subtotal * 0.05; // 5% tax
-    $total = $subtotal + $shipping + $tax;
-    
+$total = $subtotal + $shipping + $tax;
+
     mysqli_stmt_close($cart_stmt);
 } else {
     $errors[] = "Error loading cart: " . mysqli_error($conn);
@@ -280,9 +280,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
                 
                 // For all other payment methods, go to confirmation
-                header("Location: order_confirmation.php?order_id=$order_id");
-                exit();
-            } else {
+            header("Location: order_confirmation.php?order_id=$order_id");
+            exit();
+        } else {
                 // Payment failed
                 mysqli_rollback($conn);
                 $errors[] = $payment_result['message'] ?? "Payment processing failed. Please try again.";
@@ -327,14 +327,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             grid-template-columns: 1fr 360px;
             gap: 2rem;
         }
-        
+
         .checkout-form {
             background: white;
             border-radius: var(--border-radius);
             box-shadow: var(--shadow);
             padding: 1.5rem;
         }
-        
+
         .form-section {
             margin-bottom: 2rem;
         }
@@ -346,24 +346,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             padding-bottom: 0.5rem;
             border-bottom: 1px solid var(--light-gray);
         }
-        
+
         .form-row {
             display: grid;
             grid-template-columns: repeat(2, 1fr);
             gap: 1rem;
             margin-bottom: 1rem;
         }
-        
+
         .form-group {
             margin-bottom: 1rem;
         }
-        
+
         .form-label {
             display: block;
             margin-bottom: 0.5rem;
             font-weight: 500;
         }
-        
+
         .form-control {
             width: 100%;
             padding: 0.75rem;
@@ -372,7 +372,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             background: #f9f9f9;
             transition: border-color 0.2s;
         }
-        
+
         .form-control:focus {
             outline: none;
             border-color: var(--primary-color);
@@ -456,13 +456,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             padding-bottom: 1rem;
             border-bottom: 1px solid var(--light-gray);
         }
-        
+
         .summary-item:last-child {
             margin-bottom: 0;
             padding-bottom: 0;
             border-bottom: none;
         }
-        
+
         .item-image-small {
             width: 60px;
             height: 60px;
@@ -470,24 +470,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             object-fit: cover;
             margin-right: 1rem;
         }
-        
+
         .item-info {
             flex-grow: 1;
         }
-        
+
         .item-name-small {
             font-weight: 500;
             margin-bottom: 0.25rem;
             font-size: 0.9rem;
         }
-        
+
         .item-price-quantity {
             display: flex;
             justify-content: space-between;
             color: var(--medium-gray);
             font-size: 0.875rem;
         }
-        
+
         .summary-row {
             display: flex;
             justify-content: space-between;
@@ -509,7 +509,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             padding-top: 1rem;
             border-top: 1px solid var(--light-gray);
         }
-        
+
         .place-order-btn {
             background: var(--primary-color);
             color: white;
@@ -530,7 +530,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         .place-order-btn:hover {
             background: var(--primary-dark);
         }
-        
+
         .place-order-btn:disabled {
             background: var(--light-gray);
             cursor: not-allowed;
@@ -558,17 +558,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             margin-bottom: 1.5rem;
             border-left: 4px solid #2e7d32;
         }
-        
+
         @media (max-width: 992px) {
             .checkout-content {
                 grid-template-columns: 1fr;
             }
-            
+
             .order-summary {
                 margin-top: 2rem;
             }
         }
-        
+
         @media (max-width: 768px) {
             .form-row {
                 grid-template-columns: 1fr;
@@ -578,8 +578,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 </head>
 <body>
     <?php include 'navbar.php'; ?>
-    
-    <div class="checkout-container">
+
+        <div class="checkout-container">
         <div class="checkout-header">
             <h1 class="checkout-title">Checkout</h1>
             <p class="checkout-subtitle">Please fill in your details to complete your order</p>
@@ -600,15 +600,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <li><?php echo htmlspecialchars($error); ?></li>
                 <?php endforeach; ?>
             </ul>
-        </div>
-        <?php endif; ?>
-        
+                    </div>
+                <?php endif; ?>
+
         <div class="checkout-content">
             <form class="checkout-form" method="post" action="">
-                <div class="form-section">
+                    <div class="form-section">
                     <h2 class="section-title">Contact Information</h2>
-                    <div class="form-row">
-                        <div class="form-group">
+                        <div class="form-row">
+                            <div class="form-group">
                             <label class="form-label" for="full_name">Full Name</label>
                             <input type="text" id="full_name" name="full_name" class="form-control" value="<?php echo htmlspecialchars($user['name'] ?? ''); ?>" required>
                         </div>
@@ -617,35 +617,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             <input type="email" id="email" name="email" class="form-control" value="<?php echo htmlspecialchars($user['email'] ?? ''); ?>" required>
                         </div>
                     </div>
-                    <div class="form-group">
+                        <div class="form-group">
                         <label class="form-label" for="phone">Phone Number</label>
                         <input type="tel" id="phone" name="phone" class="form-control" value="<?php echo htmlspecialchars($user['phone'] ?? ''); ?>" required>
                     </div>
-                </div>
-                
+                        </div>
+
                 <div class="form-section">
                     <h2 class="section-title">Shipping Address</h2>
-                    <div class="form-group">
+                        <div class="form-group">
                         <label class="form-label" for="address">Address</label>
                         <input type="text" id="address" name="address" class="form-control" required>
-                    </div>
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label class="form-label" for="city">City</label>
-                            <input type="text" id="city" name="city" class="form-control" required>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label class="form-label" for="city">City</label>
+                                <input type="text" id="city" name="city" class="form-control" required>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label" for="state">State</label>
+                                <input type="text" id="state" name="state" class="form-control" required>
+                            </div>
                         </div>
                         <div class="form-group">
-                            <label class="form-label" for="state">State</label>
-                            <input type="text" id="state" name="state" class="form-control" required>
+                            <label class="form-label" for="zip">ZIP Code</label>
+                            <input type="text" id="zip" name="zip" class="form-control" required>
                         </div>
                     </div>
-                    <div class="form-group">
-                        <label class="form-label" for="zip">ZIP Code</label>
-                        <input type="text" id="zip" name="zip" class="form-control" required>
-                    </div>
-                </div>
-                
-                <div class="form-section">
+
+                    <div class="form-section">
                     <h2 class="section-title">Payment Method</h2>
                     <div class="payment-methods">
                         <label class="payment-method">
@@ -733,19 +733,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 <label class="form-label" for="account_name">Account Holder Name</label>
                                 <input type="text" id="account_name" name="bank_details[account_name]" class="form-control">
                             </div>
-                            <div class="form-group">
+                        <div class="form-group">
                                 <label class="form-label" for="transfer_date">Expected Transfer Date</label>
                                 <input type="date" id="transfer_date" name="bank_details[transfer_date]" class="form-control">
                             </div>
                         </div>
-                        
+
                         <!-- Credit Card Form -->
                         <div id="card-form" class="payment-form" style="display: none;">
                             <div class="form-group">
                                 <label class="form-label" for="card_number">Card Number</label>
                                 <input type="text" id="card_number" name="card_details[card_number]" class="form-control" placeholder="1234 5678 9012 3456">
                             </div>
-                            <div class="form-row">
+                        <div class="form-row">
                                 <div class="form-group">
                                     <label class="form-label" for="card_expiry">Expiry Date</label>
                                     <input type="text" id="card_expiry" name="card_details[card_expiry]" class="form-control" placeholder="MM/YY">
@@ -807,20 +807,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 <label class="form-label" for="crypto_wallet">Wallet Address (Optional)</label>
                                 <input type="text" id="crypto_wallet" name="crypto_details[wallet]" class="form-control" placeholder="Your wallet address for refunds if needed">
                             </div>
+                            </div>
                         </div>
                     </div>
-                </div>
-                
+
                 <button type="submit" class="place-order-btn">
                     <i class="fas fa-check-circle"></i> Place Order
-                </button>
-            </form>
-            
+                    </button>
+                </form>
+
             <div class="order-summary">
                 <h2 class="summary-title">Order Summary</h2>
                 
                 <div class="summary-items">
-                    <?php foreach ($cart_items as $item): ?>
+                <?php foreach ($cart_items as $item): ?>
                     <div class="summary-item">
                         <img src="<?php echo htmlspecialchars($item['image_url']); ?>" alt="<?php echo htmlspecialchars($item['name']); ?>" class="item-image-small">
                         <div class="item-info">
@@ -831,9 +831,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             </div>
                         </div>
                     </div>
-                    <?php endforeach; ?>
+                <?php endforeach; ?>
                 </div>
-                
+
                 <div class="summary-row">
                     <span class="summary-label">Subtotal (<?php echo $item_count; ?> items)</span>
                     <span class="summary-value">$<?php echo number_format($subtotal, 2); ?></span>
@@ -857,9 +857,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         </div>
         <?php endif; ?>
     </div>
-    
+
     <?php include 'footer.php'; ?>
-    
+
     <script>
     document.addEventListener('DOMContentLoaded', function() {
         const paymentMethods = document.querySelectorAll('.payment-method');
@@ -903,7 +903,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 showPaymentForm(paymentType);
             }
         });
-    });
+        });
     </script>
 </body>
 </html>

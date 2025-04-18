@@ -342,6 +342,102 @@ if ($categories_result) {
                 font-size: 2rem;
             }
         }
+
+        /* Knowledge Hub Styles */
+        .knowledge-hub {
+            padding: 4rem 0;
+            background-color: #f9f9f9;
+            border-top: 1px solid #eee;
+        }
+        
+        .knowledge-intro {
+            text-align: center;
+            max-width: 800px;
+            margin: 0 auto 3rem;
+            color: var(--medium-gray);
+            font-size: 1.1rem;
+            line-height: 1.6;
+        }
+        
+        .knowledge-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+        }
+        
+        .knowledge-card {
+            background: white;
+            border-radius: var(--border-radius);
+            box-shadow: var(--shadow);
+            padding: 2rem;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+        }
+        
+        .knowledge-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+        }
+        
+        .knowledge-icon {
+            width: 70px;
+            height: 70px;
+            background-color: rgba(76, 175, 80, 0.1);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 1.5rem;
+        }
+        
+        .knowledge-icon i {
+            font-size: 2rem;
+            color: var(--primary-color);
+        }
+        
+        .knowledge-card h3 {
+            font-size: 1.3rem;
+            margin-bottom: 1rem;
+            color: var(--dark-gray);
+        }
+        
+        .knowledge-card p {
+            color: var(--medium-gray);
+            margin-bottom: 1.5rem;
+            flex-grow: 1;
+            line-height: 1.6;
+        }
+        
+        .knowledge-link {
+            color: var(--primary-color);
+            font-weight: 600;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            transition: color 0.3s ease;
+        }
+        
+        .knowledge-link:hover {
+            color: var(--primary-dark);
+        }
+        
+        .knowledge-link i {
+            font-size: 0.8rem;
+            transition: transform 0.3s ease;
+        }
+        
+        .knowledge-link:hover i {
+            transform: translateX(3px);
+        }
+        
+        @media (max-width: 768px) {
+            .knowledge-grid {
+                grid-template-columns: 1fr;
+            }
+        }
     </style>
 </head>
 <body>
@@ -445,6 +541,49 @@ if ($categories_result) {
                 </div>
             </div>
         </section>
+
+        <section class="knowledge-hub">
+            <div class="container">
+                <div class="featured-header">
+                    <h2>Agricultural Knowledge Hub</h2>
+                    <a href="knowledge_hub.php" class="btn btn-secondary">Explore All Resources</a>
+                </div>
+                
+                <div class="knowledge-intro">
+                    <p>Discover the latest insights into modern farming techniques, market trends, and agricultural best practices to enhance your productivity and profitability.</p>
+                </div>
+                
+                <div class="knowledge-grid">
+                    <div class="knowledge-card">
+                        <div class="knowledge-icon">
+                            <i class="fas fa-tractor"></i>
+                        </div>
+                        <h3>Modern Farming Techniques</h3>
+                        <p>Learn about innovative farming methods, precision agriculture, sustainable practices, and equipment optimization to improve crop yields.</p>
+                        <a href="farming_techniques.php" class="knowledge-link">Learn More <i class="fas fa-arrow-right"></i></a>
+                    </div>
+                    
+                    <div class="knowledge-card">
+                        <div class="knowledge-icon">
+                            <i class="fas fa-chart-line"></i>
+                        </div>
+                        <h3>Market Pricing Analysis</h3>
+                        <p>Access real-time market data, price trends, seasonal fluctuations, and demand forecasts to make informed decisions about when to sell your products.</p>
+                        <a href="market_pricing.php" class="knowledge-link">Learn More <i class="fas fa-arrow-right"></i></a>
+                    </div>
+                    
+                    <div class="knowledge-card">
+                        <div class="knowledge-icon">
+                            <i class="fas fa-tasks"></i>
+                        </div>
+                        <h3>Agricultural Workflows</h3>
+                        <p>Discover efficient operational processes, supply chain management strategies, and business practices to optimize your agricultural business.</p>
+                        <a href="agricultural_workflows.php" class="knowledge-link">Learn More <i class="fas fa-arrow-right"></i></a>
+                    </div>
+                </div>
+            </div>
+        </section>
+
     </main>
 
     <?php include 'footer.php'; ?>

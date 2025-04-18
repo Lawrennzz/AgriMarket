@@ -2,7 +2,12 @@
 include 'config.php';
 
 if (isset($_SESSION['user_id'])) {
-    header("Location: dashboard.php");
+    // Redirect based on user role
+    if ($_SESSION['role'] === 'staff') {
+        header("Location: staff_dashboard.php");
+    } else {
+        header("Location: dashboard.php");
+    }
     exit();
 }
 

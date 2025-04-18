@@ -347,6 +347,8 @@ if ($category_result) {
             grid-template-columns: 2fr 1fr;
             gap: 20px;
             margin-bottom: 30px;
+            height: auto;
+            min-height: 400px;
         }
         
         .chart-container {
@@ -354,6 +356,13 @@ if ($category_result) {
             padding: 20px;
             border-radius: 8px;
             box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            height: 400px; /* Fixed height for all chart containers */
+            position: relative;
+        }
+        
+        /* Specific style for sales trend chart to ensure proper height */
+        .sales-trend-container {
+            height: 350px;
         }
         
         .chart-title {
@@ -493,7 +502,7 @@ if ($category_result) {
         </div>
         
         <div class="chart-grid">
-            <div class="chart-container">
+            <div class="chart-container sales-trend-container">
                 <h2 class="chart-title">Sales Trend</h2>
                 <p class="chart-subtitle"><?php echo $date_subtitle; ?></p>
                 <canvas id="salesTrendChart"></canvas>
@@ -612,6 +621,14 @@ if ($category_result) {
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
+                layout: {
+                    padding: {
+                        top: 5,
+                        right: 20,
+                        bottom: 10,
+                        left: 10
+                    }
+                },
                 scales: {
                     y: {
                         beginAtZero: true,
@@ -619,6 +636,12 @@ if ($category_result) {
                             callback: function(value) {
                                 return '$' + value.toLocaleString();
                             }
+                        }
+                    },
+                    x: {
+                        ticks: {
+                            maxRotation: 45,
+                            minRotation: 45
                         }
                     }
                 },

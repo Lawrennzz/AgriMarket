@@ -3,7 +3,12 @@ ob_start(); // Prevent output buffering issues
 include 'config.php';
 
 if (isset($_SESSION['user_id'])) {
-    header("Location: dashboard.php");
+    // Redirect based on user role
+    if ($_SESSION['role'] === 'staff') {
+        header("Location: staff_dashboard.php");
+    } else {
+        header("Location: dashboard.php");
+    }
     exit();
 }
 
@@ -31,7 +36,12 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 // Debug: Log session variables
                 error_log("Login successful: user_id=" . $_SESSION['user_id'] . ", role=" . $_SESSION['role'] . ", name=" . $_SESSION['name'] . ", last_activity=" . $_SESSION['last_activity']);
 
-                header("Location: dashboard.php");
+                // Redirect based on user role
+                if ($_SESSION['role'] === 'staff') {
+                    header("Location: staff_dashboard.php");
+                } else {
+                    header("Location: dashboard.php");
+                }
                 exit();
             } else {
                 error_log("Password verification failed for email: $email");

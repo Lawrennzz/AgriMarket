@@ -72,12 +72,14 @@ CREATE TABLE orders (
     total DECIMAL(10,2) NOT NULL,
     status ENUM('pending', 'processing', 'shipped', 'delivered', 'cancelled') DEFAULT 'pending',
     shipping_address VARCHAR(255) NOT NULL,
+    processed_by INT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     payment_status ENUM('pending', 'processing', 'completed', 'failed', 'refunded') DEFAULT 'pending',
     transaction_id VARCHAR(100) DEFAULT NULL,
     payment_method VARCHAR(50) DEFAULT NULL,
     deleted_at DATETIME DEFAULT NULL,
-    FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE SET NULL
+    FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE SET NULL,
+    FOREIGN KEY (processed_by) REFERENCES users(user_id) ON DELETE SET NULL
 );
 
 -- Order items
@@ -246,6 +248,27 @@ CREATE INDEX idx_product_vendor_id ON products(vendor_id);
 CREATE INDEX idx_order_user_status ON orders(user_id, status);
 CREATE INDEX idx_analytics_type ON analytics(type);
 CREATE INDEX idx_notifications_user ON notifications(user_id);
+
+-- Create customer_messages table
+CREATE TABLE `customer_messages` (
+  `message_id` int(11) NOT NULL AUTO_INCREMENT,
+  `user_id` int(11) NOT NULL,
+  `staff_id` int(11) DEFAULT NULL,
+  `subject` varchar(255) NOT NULL,
+  `message` text NOT NULL,
+  `status` enum('unread','read','answered') NOT NULL DEFAULT 'unread',
+  `is_reply` tinyint(1) NOT NULL DEFAULT 0,
+  `parent_id` int(11) DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` datetime DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`message_id`),
+  KEY `idx_message_user` (`user_id`),
+  KEY `idx_message_staff` (`staff_id`),
+  KEY `idx_message_status` (`status`),
+  CONSTRAINT `fk_message_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`user_id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_message_staff` FOREIGN KEY (`staff_id`) REFERENCES `users` (`user_id`) ON DELETE SET NULL,
+  CONSTRAINT `fk_message_parent` FOREIGN KEY (`parent_id`) REFERENCES `customer_messages` (`message_id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ================================
 -- AgriMarket Database Update Script
