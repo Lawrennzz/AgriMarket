@@ -25,7 +25,7 @@ class ProductsPage {
         
         // Get filter parameters
         $this->category_id = isset($_GET['category_id']) ? $this->db->escapeString($_GET['category_id']) : '';
-        $this->search = isset($_GET['search']) ? $this->db->escapeString($_GET['search']) : '';
+        $this->search = isset($_GET['search']) ? trim($_GET['search']) : '';
         $this->sort = isset($_GET['sort']) ? $_GET['sort'] : 'name_asc';
         $this->view = isset($_GET['view']) ? $_GET['view'] : 'grid';
         
@@ -33,11 +33,21 @@ class ProductsPage {
         $this->loadProducts();
         $this->loadCategories();
         
-        // Log search analytics
+        // Log search analytics if search term was provided
         if ($this->search) {
-            $query = "INSERT INTO analytics (type, product_id, count) VALUES ('search', NULL, 1)";
-            $stmt = $this->db->prepare($query);
-            mysqli_stmt_execute($stmt);
+            // Include the functions file if needed
+            if (!function_exists('logProductSearch')) {
+                require_once 'includes/functions.php';
+            }
+            
+            // Extract product IDs from the loaded products for better analytics tracking
+            $product_ids = [];
+            foreach ($this->products as $product) {
+                $product_ids[] = $product['product_id'];
+            }
+            
+            // Log the search with the product IDs found
+            logProductSearch($this->conn, $this->search, $product_ids);
         }
     }
     
@@ -55,7 +65,8 @@ class ProductsPage {
             $where_conditions[] = "p.category_id = '{$this->category_id}'";
         }
         if ($this->search) {
-            $where_conditions[] = "(p.name LIKE '%{$this->search}%' OR p.description LIKE '%{$this->search}%')";
+            $escaped_search = $this->db->escapeString($this->search);
+            $where_conditions[] = "(p.name LIKE '%{$escaped_search}%' OR p.description LIKE '%{$escaped_search}%')";
         }
         
         if (!empty($where_conditions)) {
@@ -113,7 +124,7 @@ class ProductsPage {
     }
     
     public function getSearch() {
-        return $this->search;
+        return htmlspecialchars_decode($this->search);
     }
     
     public function getSort() {

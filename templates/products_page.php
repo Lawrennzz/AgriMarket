@@ -4,7 +4,188 @@
     <title>Products - AgriMarket</title>
     <link rel="stylesheet" href="styles.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <!-- Global style for text visibility -->
     <style>
+        /* Fix for search text visibility */
+        .search-input input,
+        select.form-control,
+        input[type="text"],
+        input[type="search"],
+        .form-control,
+        #product-search {
+            color: #000 !important;
+            background-color: #fff !important;
+        }
+        
+        /* Updated search and filter styles to match image */
+        .search-filters {
+            background: #f8f9fa;
+            padding: 1.5rem;
+            border-radius: 10px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            margin-bottom: 2rem;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .search-container {
+            position: relative;
+            width: 100%;
+            flex: 3;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+        }
+        
+        .search-icon-wrapper {
+            position: relative;
+            display: flex;
+            align-items: center;
+            width: 100%;
+        }
+        
+        .search-box {
+            width: 100%;
+            padding: 12px 40px 12px 40px;
+            border: 1px solid #ddd;
+            border-radius: 30px;
+            font-size: 16px;
+            color: #333;
+            background: #fff;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+            transition: all 0.3s;
+        }
+        
+        .search-box:focus {
+            outline: none;
+            box-shadow: 0 0 0 2px rgba(76, 175, 80, 0.3);
+            border-color: #4CAF50;
+        }
+        
+        .search-icon {
+            position: absolute;
+            left: 15px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #666;
+            font-size: 18px;
+            z-index: 1;
+            pointer-events: none;
+        }
+        
+        .clear-search {
+            position: absolute;
+            right: 15px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #999;
+            font-size: 18px;
+            cursor: pointer;
+            display: none;
+            background: none;
+            border: none;
+            padding: 0;
+            z-index: 1;
+        }
+        
+        .search-box:valid ~ .clear-search,
+        .search-box[value]:not([value=""]) ~ .clear-search {
+            display: block;
+        }
+        
+        /* Filter layout */
+        .search-row {
+            display: flex;
+            gap: 1rem;
+            align-items: stretch;
+            width: 100%;
+        }
+        
+        .filter-controls {
+            display: flex;
+            gap: 1rem;
+            margin-top: 1rem;
+            width: 100%;
+            align-items: center;
+        }
+        
+        .form-control {
+            height: 45px;
+            border-radius: 5px;
+            border: 1px solid #ddd;
+            padding: 0 1rem;
+            background: white;
+            flex: 1;
+        }
+        
+        /* Apply Filters Button */
+        .btn-apply-filters {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            padding: 0.75rem 1.5rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            min-width: 120px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .btn-apply-filters:hover {
+            background-color: #3e9142;
+        }
+        
+        /* Reset Filters Button */
+        .btn-reset-filters {
+            background-color: #f8f9fa;
+            color: #666;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            padding: 0.75rem 1.5rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            min-width: 80px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .btn-reset-filters:hover {
+            background-color: #e9ecef;
+            border-color: #ced4da;
+        }
+        
+        /* View toggle buttons */
+        .view-options {
+            display: flex;
+            gap: 5px;
+            margin-left: auto;
+        }
+        
+        .view-option {
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 5px;
+            border: 1px solid #ddd;
+            background: white;
+            color: #666;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .view-option.active {
+            background: #4CAF50;
+            color: white;
+            border-color: #4CAF50;
+        }
+        
         .products-container {
             padding: 2rem 0;
         }
@@ -22,33 +203,6 @@
             border-radius: var(--border-radius);
             box-shadow: var(--shadow);
             margin-bottom: 2rem;
-        }
-
-        .search-row {
-            display: flex;
-            gap: 1rem;
-            margin-bottom: 1rem;
-        }
-
-        .search-input {
-            flex: 1;
-            position: relative;
-        }
-
-        .search-input i {
-            position: absolute;
-            left: 1rem;
-            top: 50%;
-            transform: translateY(-50%);
-            color: var(--medium-gray);
-        }
-
-        .search-input input {
-            width: 100%;
-            padding: 0.75rem 1rem 0.75rem 2.5rem;
-            border: 1px solid var(--light-gray);
-            border-radius: 4px;
-            font-size: 1rem;
         }
 
         .filters-row {
@@ -239,41 +393,54 @@
         </div>
 
         <div class="search-filters">
-            <form method="GET" class="search-row">
-                <div class="search-input">
-                    <i class="fas fa-search"></i>
-                    <input type="text" name="search" placeholder="Search products..." value="<?php echo htmlspecialchars($this->getSearch()); ?>">
+            <form method="GET" action="products.php">
+                <div class="search-row">
+                    <div class="search-container">
+                        <div class="search-icon-wrapper">
+                            <i class="fas fa-search search-icon"></i>
+                            <input type="text" name="search" id="product-search" class="search-box"
+                                placeholder="search" 
+                                value="<?php echo htmlspecialchars($this->getSearch()); ?>" 
+                                autocomplete="off">
+                            <button type="button" class="clear-search" onclick="clearSearch()">
+                                <i class="fas fa-times"></i>
+                            </button>
+                        </div>
+                    </div>
                 </div>
-                <select name="category_id" class="form-control">
-                    <option value="">All Categories</option>
-                    <?php foreach ($this->getCategories() as $cat): ?>
-                        <option value="<?php echo htmlspecialchars($cat['category_id']); ?>" <?php echo $this->getCategoryId() === $cat['category_id'] ? 'selected' : ''; ?>>
-                            <?php echo ucfirst(htmlspecialchars($cat['name'])); ?>
-                        </option>
-                    <?php endforeach; ?>
-                </select>
-                <select name="sort" class="form-control">
-                    <option value="name_asc" <?php echo $this->getSort() === 'name_asc' ? 'selected' : ''; ?>>Name (A-Z)</option>
-                    <option value="name_desc" <?php echo $this->getSort() === 'name_desc' ? 'selected' : ''; ?>>Name (Z-A)</option>
-                    <option value="price_asc" <?php echo $this->getSort() === 'price_asc' ? 'selected' : ''; ?>>Price (Low to High)</option>
-                    <option value="price_desc" <?php echo $this->getSort() === 'price_desc' ? 'selected' : ''; ?>>Price (High to Low)</option>
-                </select>
-                <button type="submit" class="btn btn-primary">Apply Filters</button>
+                
+                <div class="filter-controls">
+                    <select name="category_id" class="form-control">
+                        <option value="">All Categories</option>
+                        <?php foreach ($this->getCategories() as $cat): ?>
+                            <option value="<?php echo htmlspecialchars($cat['category_id']); ?>" <?php echo $this->getCategoryId() === $cat['category_id'] ? 'selected' : ''; ?>>
+                                <?php echo ucfirst(htmlspecialchars($cat['name'])); ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                    <select name="sort" class="form-control">
+                        <option value="name_asc" <?php echo $this->getSort() === 'name_asc' ? 'selected' : ''; ?>>Name (A-Z)</option>
+                        <option value="name_desc" <?php echo $this->getSort() === 'name_desc' ? 'selected' : ''; ?>>Name (Z-A)</option>
+                        <option value="price_asc" <?php echo $this->getSort() === 'price_asc' ? 'selected' : ''; ?>>Price (Low to High)</option>
+                        <option value="price_desc" <?php echo $this->getSort() === 'price_desc' ? 'selected' : ''; ?>>Price (High to Low)</option>
+                    </select>
+                    <button type="submit" class="btn-apply-filters">Apply Filters</button>
+                    <button type="button" class="btn-reset-filters" onclick="resetFilters()">Reset</button>
+                    
+                    <div class="view-options">
+                        <a href="?<?php echo http_build_query(array_merge($_GET, ['view' => 'grid'])); ?>" 
+                        class="view-option <?php echo $this->getView() === 'grid' ? 'active' : ''; ?>"
+                        title="Grid View">
+                            <i class="fas fa-th"></i>
+                        </a>
+                        <a href="?<?php echo http_build_query(array_merge($_GET, ['view' => 'list'])); ?>" 
+                        class="view-option <?php echo $this->getView() === 'list' ? 'active' : ''; ?>"
+                        title="List View">
+                            <i class="fas fa-list"></i>
+                        </a>
+                    </div>
+                </div>
             </form>
-            <div class="filters-row">
-                <div class="view-options">
-                    <a href="?<?php echo http_build_query(array_merge($_GET, ['view' => 'grid'])); ?>" 
-                       class="view-option <?php echo $this->getView() === 'grid' ? 'active' : ''; ?>"
-                       title="Grid View">
-                        <i class="fas fa-th"></i>
-                    </a>
-                    <a href="?<?php echo http_build_query(array_merge($_GET, ['view' => 'list'])); ?>" 
-                       class="view-option <?php echo $this->getView() === 'list' ? 'active' : ''; ?>"
-                       title="List View">
-                        <i class="fas fa-list"></i>
-                    </a>
-                </div>
-            </div>
         </div>
 
         <?php if (!empty($this->getProducts())): ?>
@@ -346,6 +513,7 @@
     <?php include 'footer.php'; ?>
 
     <script>
+    // Cart functionality 
     function addToCart(productId) {
         fetch('cart.php', {
             method: 'POST',
@@ -369,6 +537,87 @@
         })
         .catch(error => console.error('Error:', error));
     }
+
+    // Function to clear search input
+    function clearSearch() {
+        const searchInput = document.getElementById('product-search');
+        searchInput.value = '';
+        searchInput.focus();
+        
+        // Hide the clear button
+        const clearButton = document.querySelector('.clear-search');
+        if (clearButton) {
+            clearButton.style.display = 'none';
+        }
+        
+        // Optional: Submit the form to clear results
+        // Uncomment the next line if you want to automatically clear results
+        // document.querySelector('form').submit();
+    }
+    
+    // Function to reset all filters
+    function resetFilters() {
+        // Clear search input
+        const searchInput = document.getElementById('product-search');
+        if (searchInput) {
+            searchInput.value = '';
+        }
+        
+        // Reset category dropdown to default
+        const categorySelect = document.querySelector('select[name="category_id"]');
+        if (categorySelect) {
+            categorySelect.value = '';
+        }
+        
+        // Reset sort dropdown to default (Name A-Z)
+        const sortSelect = document.querySelector('select[name="sort"]');
+        if (sortSelect) {
+            sortSelect.value = 'name_asc';
+        }
+        
+        // Hide clear button
+        const clearButton = document.querySelector('.clear-search');
+        if (clearButton) {
+            clearButton.style.display = 'none';
+        }
+        
+        // Focus on search input
+        if (searchInput) {
+            searchInput.focus();
+        }
+        
+        // Redirect to products page without any filters
+        window.location.href = 'products.php';
+    }
+
+    // Enhanced search functionality
+    document.addEventListener('DOMContentLoaded', function() {
+        const searchInput = document.getElementById('product-search');
+        if (searchInput) {
+            // Show/hide clear button based on content
+            const updateClearButton = function() {
+                const clearButton = document.querySelector('.clear-search');
+                if (clearButton) {
+                    clearButton.style.display = searchInput.value ? 'block' : 'none';
+                }
+            };
+            
+            // Initialize clear button visibility
+            updateClearButton();
+            
+            // Update on input
+            searchInput.addEventListener('input', updateClearButton);
+            
+            // Focus search field on page load if empty or contains search term
+            searchInput.focus();
+            
+            // Place cursor at the end of text if there's existing search text
+            if (searchInput.value) {
+                const len = searchInput.value.length;
+                searchInput.setSelectionRange(len, len);
+            }
+        }
+    });
     </script>
 </body>
 </html> 

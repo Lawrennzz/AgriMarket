@@ -172,13 +172,24 @@ class ProductPage {
     }
     
     private function logProductView() {
-        // Log product view in analytics
-        $sql = "INSERT INTO analytics (type, product_id, count) VALUES ('view', ?, 1)";
-        $stmt = $this->db->prepare($sql);
+        // Include the functions file if not already included
+        if (!function_exists('logProductView')) {
+            require_once dirname(__DIR__) . '/includes/functions.php';
+        }
         
-        if ($stmt !== false) {
-            mysqli_stmt_bind_param($stmt, "i", $this->product_id);
+        // Log product visit to analytics database
+        logProductView($this->conn, $this->product_id);
+        
+        // Also log to product_visits table if it exists
+        $sql = "INSERT INTO product_visits (product_id, user_id, session_id, user_ip) 
+                VALUES (?, ?, ?, ?)";
+        $stmt = $this->db->prepare($sql);
+        if ($stmt) {
+            $session_id = session_id() ?: uniqid('sess_');
+            $user_ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+            mysqli_stmt_bind_param($stmt, "iiss", $this->product_id, $this->user_id, $session_id, $user_ip);
             mysqli_stmt_execute($stmt);
+            mysqli_stmt_close($stmt);
         }
     }
     

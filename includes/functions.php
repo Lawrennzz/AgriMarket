@@ -314,4 +314,169 @@ function uploadFile($file, $destination, $allowed_types = [], $max_size = 209715
         return ['status' => false, 'message' => 'Failed to move uploaded file'];
     }
 }
+
+/**
+ * Log a product search to the analytics table
+ * 
+ * @param object $conn Database connection
+ * @param string $search_term The search term
+ * @param array $product_ids Array of product IDs found in search
+ * @return bool Whether the logging was successful
+ */
+function logProductSearch($conn, $search_term, $product_ids = []) {
+    // Generate a session ID if one doesn't exist
+    if (!isset($_SESSION['analytics_session_id'])) {
+        $_SESSION['analytics_session_id'] = session_id() ?: uniqid('sess_');
+    }
+    
+    $session_id = $_SESSION['analytics_session_id'];
+    $user_id = isset($_SESSION['user_id']) ? $_SESSION['user_id'] : null;
+    $user_ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+    
+    // First, log the search term to product_search_logs
+    $search_sql = "INSERT INTO product_search_logs 
+                  (search_term, product_ids, session_id, user_id, user_ip, created_at) 
+                  VALUES (?, ?, ?, ?, ?, NOW())";
+    
+    $stmt = mysqli_prepare($conn, $search_sql);
+    if (!$stmt) {
+        error_log("Failed to prepare search log query: " . mysqli_error($conn));
+        return false;
+    }
+    
+    $product_ids_json = json_encode($product_ids);
+    mysqli_stmt_bind_param($stmt, "sssis", $search_term, $product_ids_json, $session_id, $user_id, $user_ip);
+    $result = mysqli_stmt_execute($stmt);
+    mysqli_stmt_close($stmt);
+    
+    // Now log individual product impressions in the analytics table
+    if (!empty($product_ids)) {
+        foreach ($product_ids as $product_id) {
+            logAnalyticEvent($conn, 'search', $product_id);
+        }
+    }
+    
+    return $result;
+}
+
+/**
+ * Log a product visit to the analytics table
+ * 
+ * @param object $conn Database connection
+ * @param int $product_id Product ID being viewed
+ * @return bool Whether the logging was successful
+ */
+function logProductView($conn, $product_id) {
+    return logAnalyticEvent($conn, 'visit', $product_id);
+}
+
+/**
+ * Log an analytic event to the analytics table
+ * 
+ * @param object $conn Database connection
+ * @param string $type Type of event (search, visit, etc.)
+ * @param int $product_id Product ID
+ * @return bool Whether the logging was successful
+ */
+function logAnalyticEvent($conn, $type, $product_id) {
+    // Ensure tables exist
+    createAnalyticsTables($conn);
+    
+    // Generate a session ID if one doesn't exist
+    if (!isset($_SESSION['analytics_session_id'])) {
+        $_SESSION['analytics_session_id'] = session_id() ?: uniqid('sess_');
+    }
+    
+    $session_id = $_SESSION['analytics_session_id'];
+    $user_id = isset($_SESSION['user_id']) ? $_SESSION['user_id'] : null;
+    $user_ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+    
+    // Log to analytics table
+    $sql = "INSERT INTO analytics 
+            (type, product_id, session_id, user_id, user_ip, created_at) 
+            VALUES (?, ?, ?, ?, ?, NOW())";
+    
+    $stmt = mysqli_prepare($conn, $sql);
+    if (!$stmt) {
+        error_log("Failed to prepare analytics query: " . mysqli_error($conn));
+        return false;
+    }
+    
+    mysqli_stmt_bind_param($stmt, "sisis", $type, $product_id, $session_id, $user_id, $user_ip);
+    $result = mysqli_stmt_execute($stmt);
+    
+    if (!$result) {
+        error_log("Failed to log analytics: " . mysqli_stmt_error($stmt));
+    }
+    
+    mysqli_stmt_close($stmt);
+    return $result;
+}
+
+/**
+ * Create analytics tables if they don't exist
+ * 
+ * @param object $conn Database connection
+ */
+function createAnalyticsTables($conn) {
+    // Check if analytics table exists, if not create it
+    $analytics_table_check = mysqli_query($conn, "SHOW TABLES LIKE 'analytics'");
+    if (mysqli_num_rows($analytics_table_check) == 0) {
+        $create_analytics_table = "
+            CREATE TABLE analytics (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                type VARCHAR(50) NOT NULL,
+                product_id INT,
+                session_id VARCHAR(100),
+                user_id INT,
+                user_ip VARCHAR(45),
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                INDEX (type),
+                INDEX (product_id),
+                INDEX (user_id),
+                INDEX (created_at)
+            )
+        ";
+        mysqli_query($conn, $create_analytics_table);
+    }
+    
+    // Check if product_search_logs table exists, if not create it
+    $search_logs_table_check = mysqli_query($conn, "SHOW TABLES LIKE 'product_search_logs'");
+    if (mysqli_num_rows($search_logs_table_check) == 0) {
+        $create_search_logs_table = "
+            CREATE TABLE product_search_logs (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                search_term VARCHAR(255) NOT NULL,
+                product_ids JSON,
+                session_id VARCHAR(100),
+                user_id INT,
+                user_ip VARCHAR(45),
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                INDEX (search_term),
+                INDEX (user_id),
+                INDEX (created_at)
+            )
+        ";
+        mysqli_query($conn, $create_search_logs_table);
+    }
+    
+    // Check if product_visits table exists, if not create it
+    $visits_table_check = mysqli_query($conn, "SHOW TABLES LIKE 'product_visits'");
+    if (mysqli_num_rows($visits_table_check) == 0) {
+        $create_visits_table = "
+            CREATE TABLE product_visits (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                product_id INT NOT NULL,
+                user_id INT,
+                session_id VARCHAR(100),
+                visit_date DATETIME DEFAULT CURRENT_TIMESTAMP,
+                user_ip VARCHAR(45),
+                INDEX (product_id),
+                INDEX (user_id),
+                INDEX (visit_date)
+            )
+        ";
+        mysqli_query($conn, $create_visits_table);
+    }
+}
 ?> 

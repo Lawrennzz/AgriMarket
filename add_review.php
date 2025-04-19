@@ -36,6 +36,8 @@ $sql = "SELECT o.*, p.name as product_name, p.image_url
 
 $stmt = $db->prepare($sql);
 if (!$stmt) {
+    $_SESSION['error'] = "System error: Unable to verify order. Please try again later.";
+    error_log("Failed to prepare order verification statement: " . mysqli_error($conn));
     header('Location: my_orders.php');
     exit();
 }
@@ -45,21 +47,29 @@ mysqli_stmt_execute($stmt);
 $result = mysqli_stmt_get_result($stmt);
 
 if (!$row = mysqli_fetch_assoc($result)) {
+    $_SESSION['error'] = "This order doesn't exist, isn't delivered yet, or doesn't belong to you.";
     header('Location: my_orders.php');
     exit();
 }
+mysqli_stmt_close($stmt);
 
 // Check if user has already reviewed this product
-$sql = "SELECT * FROM reviews WHERE user_id = ? AND product_id = ?";
+$sql = "SELECT * FROM reviews WHERE user_id = ? AND product_id = ? AND order_id = ?";
 $stmt = $db->prepare($sql);
-mysqli_stmt_bind_param($stmt, "ii", $user_id, $product_id);
-mysqli_stmt_execute($stmt);
-$result = mysqli_stmt_get_result($stmt);
-
-if (mysqli_fetch_assoc($result)) {
-    $_SESSION['error'] = "You have already reviewed this product.";
-    header('Location: my_orders.php');
-    exit();
+if ($stmt) {
+    mysqli_stmt_bind_param($stmt, "iii", $user_id, $product_id, $order_id);
+    mysqli_stmt_execute($stmt);
+    $result = mysqli_stmt_get_result($stmt);
+    
+    if (mysqli_fetch_assoc($result)) {
+        $_SESSION['error'] = "You have already reviewed this product for this order.";
+        header('Location: my_orders.php');
+        exit();
+    }
+    mysqli_stmt_close($stmt);
+} else {
+    // Log the error and continue
+    error_log("Failed to prepare review check statement: " . mysqli_error($conn));
 }
 
 // Handle form submission
@@ -73,20 +83,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = "Please write a review comment.";
     } else {
         // Insert the review
-        $sql = "INSERT INTO reviews (user_id, product_id, rating, comment) VALUES (?, ?, ?, ?)";
+        $sql = "INSERT INTO reviews (user_id, product_id, order_id, rating, comment) VALUES (?, ?, ?, ?, ?)";
         $stmt = $db->prepare($sql);
         
         if ($stmt) {
-            mysqli_stmt_bind_param($stmt, "iiis", $user_id, $product_id, $rating, $comment);
+            mysqli_stmt_bind_param($stmt, "iiiis", $user_id, $product_id, $order_id, $rating, $comment);
             if (mysqli_stmt_execute($stmt)) {
                 $_SESSION['success'] = "Thank you for your review!";
                 header('Location: my_orders.php');
                 exit();
             } else {
-                $error = "Error saving your review. Please try again.";
+                $error = "Error saving your review: " . mysqli_stmt_error($stmt);
             }
+            mysqli_stmt_close($stmt);
         } else {
-            $error = "Error preparing review submission.";
+            $error = "Error preparing review submission: " . mysqli_error($conn);
         }
     }
 }

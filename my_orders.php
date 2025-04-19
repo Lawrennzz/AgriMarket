@@ -167,6 +167,38 @@ if ($stmt) {
             background-color: #f8d7da;
             color: #721c24;
         }
+        
+        /* Fix for search input text visibility */
+        input[type="text"], input[type="search"], .form-control {
+            color: #333;
+        }
+        
+        /* Improved alert styling */
+        .alert {
+            padding: 1rem 1.5rem;
+            border-radius: var(--border-radius);
+            margin-bottom: 1.5rem;
+            position: relative;
+            border-left: 4px solid;
+        }
+        
+        .alert-success {
+            background-color: #d4edda;
+            color: #155724;
+            border-left-color: #28a745;
+        }
+        
+        .alert-danger {
+            background-color: #f8d7da;
+            color: #721c24;
+            border-left-color: #dc3545;
+        }
+        
+        .alert-info {
+            background-color: #d1ecf1;
+            color: #0c5460;
+            border-left-color: #17a2b8;
+        }
     </style>
 </head>
 <body>
@@ -177,7 +209,7 @@ if ($stmt) {
 
         <?php if (isset($_SESSION['success'])): ?>
             <div class="alert alert-success">
-                <?php 
+                <i class="fas fa-check-circle"></i> <?php 
                 echo $_SESSION['success'];
                 unset($_SESSION['success']);
                 ?>
@@ -186,7 +218,7 @@ if ($stmt) {
 
         <?php if (isset($_SESSION['error'])): ?>
             <div class="alert alert-danger">
-                <?php 
+                <i class="fas fa-exclamation-circle"></i> <?php 
                 echo $_SESSION['error'];
                 unset($_SESSION['error']);
                 ?>
@@ -228,13 +260,18 @@ if ($stmt) {
                                     <div class="item-actions">
                                         <?php if ($order['status'] === 'delivered'): ?>
                                             <?php
-                                            // Check if user has already reviewed this product
-                                            $review_check_sql = "SELECT * FROM reviews WHERE user_id = ? AND product_id = ?";
+                                            // Check if user has already reviewed this product for this specific order
+                                            $review_check_sql = "SELECT * FROM reviews WHERE user_id = ? AND product_id = ? AND order_id = ?";
                                             $review_stmt = $db->prepare($review_check_sql);
-                                            mysqli_stmt_bind_param($review_stmt, "ii", $_SESSION['user_id'], $item['product_id']);
-                                            mysqli_stmt_execute($review_stmt);
-                                            $review_result = mysqli_stmt_get_result($review_stmt);
-                                            $has_reviewed = mysqli_fetch_assoc($review_result) ? true : false;
+                                            if ($review_stmt) {
+                                                mysqli_stmt_bind_param($review_stmt, "iii", $_SESSION['user_id'], $item['product_id'], $order['order_id']);
+                                                mysqli_stmt_execute($review_stmt);
+                                                $review_result = mysqli_stmt_get_result($review_stmt);
+                                                $has_reviewed = mysqli_num_rows($review_result) > 0;
+                                                mysqli_stmt_close($review_stmt);
+                                            } else {
+                                                $has_reviewed = false; // Default if query fails
+                                            }
                                             ?>
                                             
                                             <?php if (!$has_reviewed): ?>

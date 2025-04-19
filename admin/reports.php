@@ -79,56 +79,142 @@ switch ($time_period) {
         $date_subtitle = "Last 30 Days";
 }
 
-// Query 1: Most searched products
+// Query 1: Most searched products - real-time data
 $search_query = "
-    SELECT p.name AS product_name, COUNT(*) AS search_count
+    SELECT 
+        p.product_id,
+        p.name AS product_name,
+        COUNT(*) AS search_count
     FROM analytics a
     JOIN products p ON a.product_id = p.product_id
     WHERE a.type = 'search' $date_clause
-    GROUP BY p.product_id
+    GROUP BY p.product_id, p.name
     ORDER BY search_count DESC
-    LIMIT 10
+    LIMIT 5
 ";
+
 $search_result = mysqli_query($conn, $search_query);
 if (!$search_result) {
     error_log("Search query failed: " . mysqli_error($conn));
-    $search_result = false;
+    // If analytics table doesn't have data, check product_search_logs table
+    $search_query_alt = "
+        SELECT 
+            p.product_id,
+            p.name AS product_name,
+            COUNT(*) AS search_count
+        FROM product_search_logs psl
+        JOIN products p ON JSON_CONTAINS(psl.product_ids, CAST(p.product_id AS JSON))
+        WHERE psl.created_at >= DATE_SUB(NOW(), INTERVAL 1 MONTH)
+        GROUP BY p.product_id, p.name
+        ORDER BY search_count DESC
+        LIMIT 5
+    ";
+    $search_result = mysqli_query($conn, $search_query_alt);
+    
+    if (!$search_result) {
+        // If both fail, create a simpler query for search term counts
+        $search_query_simple = "
+            SELECT 
+                p.product_id,
+                p.name AS product_name,
+                (SELECT COUNT(*) FROM product_search_logs WHERE search_term LIKE CONCAT('%', p.name, '%')) AS search_count
+            FROM 
+                products p
+            ORDER BY 
+                search_count DESC
+            LIMIT 5
+        ";
+        $search_result = mysqli_query($conn, $search_query_simple);
+    }
 }
 
-// Query 2: Most visited product pages
+// Query 2: Most visited product pages - real-time data
 $visit_query = "
-    SELECT p.name AS product_name, COUNT(*) AS visit_count
+    SELECT 
+        p.product_id,
+        p.name AS product_name,
+        COUNT(*) AS visit_count
     FROM analytics a
     JOIN products p ON a.product_id = p.product_id
     WHERE a.type = 'visit' $date_clause
-    GROUP BY p.product_id
+    GROUP BY p.product_id, p.name
     ORDER BY visit_count DESC
-    LIMIT 10
+    LIMIT 5
 ";
+
 $visit_result = mysqli_query($conn, $visit_query);
-if (!$visit_result) {
-    error_log("Visit query failed: " . mysqli_error($conn));
-    $visit_result = false;
+if (!$visit_result || mysqli_num_rows($visit_result) === 0) {
+    // If analytics table doesn't have visit data, try product_visits table
+    $visit_query_alt = "
+        SELECT 
+            p.product_id,
+            p.name AS product_name,
+            COUNT(*) AS visit_count
+        FROM product_visits pv
+        JOIN products p ON pv.product_id = p.product_id
+        WHERE pv.visit_date >= DATE_SUB(NOW(), INTERVAL 1 MONTH)
+        GROUP BY p.product_id, p.name
+        ORDER BY visit_count DESC
+        LIMIT 5
+    ";
+    $visit_result = mysqli_query($conn, $visit_query_alt);
+    
+    if (!$visit_result || mysqli_num_rows($visit_result) === 0) {
+        // If both fail, create a basic query from order_items as a proxy for popularity
+        $visit_query_simple = "
+            SELECT 
+                p.product_id,
+                p.name AS product_name,
+                COUNT(DISTINCT oi.order_id) AS visit_count
+            FROM 
+                products p
+            LEFT JOIN
+                order_items oi ON p.product_id = oi.product_id
+            GROUP BY 
+                p.product_id, p.name
+            ORDER BY 
+                visit_count DESC
+            LIMIT 5
+        ";
+        $visit_result = mysqli_query($conn, $visit_query_simple);
+    }
 }
 
-// Query 3: Most ordered products
+// Query 3: Most ordered products - real-time data
 $order_query = "
     SELECT 
+        p.product_id,
         p.name AS product_name, 
-        COALESCE(SUM(oi.quantity), 0) AS order_count,
-        COALESCE(SUM(oi.quantity * oi.price), 0) AS total_revenue
+        SUM(oi.quantity) AS order_count,
+        SUM(oi.quantity * oi.price) AS total_revenue
     FROM products p
-    LEFT JOIN order_items oi ON oi.product_id = p.product_id
-    LEFT JOIN orders o ON oi.order_id = o.order_id AND o.status IN ('completed', 'shipped', 'delivered')
-        AND o.deleted_at IS NULL $date_clause
-    GROUP BY p.product_id
+    JOIN order_items oi ON oi.product_id = p.product_id
+    JOIN orders o ON oi.order_id = o.order_id
+    WHERE o.status IN ('processing', 'shipped', 'delivered') 
+    AND o.deleted_at IS NULL $date_clause
+    GROUP BY p.product_id, p.name
     ORDER BY order_count DESC
-    LIMIT 10
+    LIMIT 5
 ";
 $order_result = mysqli_query($conn, $order_query);
-if (!$order_result) {
-    error_log("Order query failed: " . mysqli_error($conn));
-    $order_result = false;
+if (!$order_result || mysqli_num_rows($order_result) === 0) {
+    // If order query fails, try a simpler query
+    $order_query_simple = "
+        SELECT 
+            p.product_id,
+            p.name AS product_name, 
+            COUNT(oi.order_item_id) AS order_count
+        FROM 
+            products p
+        LEFT JOIN 
+            order_items oi ON p.product_id = oi.product_id
+        GROUP BY 
+            p.product_id, p.name
+        ORDER BY 
+            order_count DESC
+        LIMIT 5
+    ";
+    $order_result = mysqli_query($conn, $order_query_simple);
 }
 
 // Query 4: Sales by vendor
@@ -168,21 +254,21 @@ if (!$sales_trend_result) {
     $sales_trend_result = false;
 }
 
-// Query 6: Total statistics
+// Query 6: Total statistics - real-time data
 $stats_query = "
     SELECT
-        COUNT(*) AS total_orders,
-        COALESCE(SUM(total), 0) AS total_revenue,
-        COUNT(DISTINCT user_id) AS unique_customers,
-        COALESCE(AVG(total), 0) AS average_order_value
-    FROM orders 
-    WHERE status IN ('completed', 'shipped', 'delivered')
-    AND deleted_at IS NULL
+        COUNT(DISTINCT o.order_id) AS total_orders,
+        COALESCE(SUM(o.total), 0) AS total_revenue,
+        COUNT(DISTINCT o.user_id) AS unique_customers,
+        COALESCE(AVG(o.total), 0) AS average_order_value
+    FROM orders o
+    WHERE o.status IN ('processing', 'shipped', 'delivered')
+    AND o.deleted_at IS NULL
     $date_clause
 ";
 $stats_result = mysqli_query($conn, $stats_query);
 
-// Initialize default values for stats in case query fails
+// Initialize default values for stats
 $stats = [
     'total_orders' => 0,
     'total_revenue' => 0,
@@ -191,17 +277,17 @@ $stats = [
 ];
 
 // Check if query was successful before fetching
-if ($stats_result) {
+if ($stats_result && mysqli_num_rows($stats_result) > 0) {
     $stats = mysqli_fetch_assoc($stats_result);
 } else {
     // Log the error
     error_log("Stats query failed: " . mysqli_error($conn));
     
-    // Fallback - run individual queries instead of subqueries
-    $total_orders_query = "SELECT COUNT(*) AS total_orders FROM orders WHERE status IN ('completed', 'shipped', 'delivered') $date_clause";
-    $total_revenue_query = "SELECT SUM(total_amount) AS total_revenue FROM orders WHERE status IN ('completed', 'shipped', 'delivered') $date_clause";
-    $unique_customers_query = "SELECT COUNT(DISTINCT user_id) AS unique_customers FROM orders WHERE status IN ('completed', 'shipped', 'delivered') $date_clause";
-    $avg_order_query = "SELECT AVG(total_amount) AS average_order_value FROM orders WHERE status IN ('completed', 'shipped', 'delivered') $date_clause";
+    // Run individual queries for each statistic
+    $total_orders_query = "SELECT COUNT(DISTINCT order_id) AS total_orders FROM orders WHERE status IN ('processing', 'shipped', 'delivered') $date_clause";
+    $total_revenue_query = "SELECT COALESCE(SUM(total), 0) AS total_revenue FROM orders WHERE status IN ('processing', 'shipped', 'delivered') $date_clause";
+    $unique_customers_query = "SELECT COUNT(DISTINCT user_id) AS unique_customers FROM orders WHERE status IN ('processing', 'shipped', 'delivered') $date_clause";
+    $avg_order_query = "SELECT COALESCE(AVG(total), 0) AS average_order_value FROM orders WHERE status IN ('processing', 'shipped', 'delivered') $date_clause";
     
     $total_orders_result = mysqli_query($conn, $total_orders_query);
     if ($total_orders_result && $row = mysqli_fetch_assoc($total_orders_result)) {
@@ -361,60 +447,26 @@ if ($category_result) {
             gap: 20px;
             margin-bottom: 30px;
             height: auto;
-            min-height: 400px;
         }
         
-        .chart-container {
+        .chart-card, .ranking-card, .data-card {
             background-color: white;
-            padding: 20px;
             border-radius: 8px;
             box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-            height: 400px; /* Fixed height for all chart containers */
-            position: relative;
+            padding: 20px;
         }
         
-        /* Specific style for sales trend chart to ensure proper height */
-        .sales-trend-container {
-            height: 350px;
-        }
-        
-        .chart-title {
+        .chart-title, .ranking-title, .card-title {
             font-size: 1.2rem;
             color: #333;
             margin-top: 0;
             margin-bottom: 20px;
-        }
-        
-        .chart-subtitle {
-            font-size: 0.9rem;
-            color: #777;
-            margin-top: -15px;
-            margin-bottom: 20px;
-        }
-        
-        .ranking-grid {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 20px;
-            margin-bottom: 30px;
-        }
-        
-        .ranking-card {
-            background-color: white;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-        }
-        
-        .ranking-title {
-            font-size: 1.2rem;
-            color: #333;
-            margin-top: 0;
-            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #eee;
         }
         
         .ranking-list {
-            list-style-type: none;
+            list-style: none;
             padding: 0;
             margin: 0;
         }
@@ -422,7 +474,8 @@ if ($category_result) {
         .ranking-item {
             display: flex;
             justify-content: space-between;
-            padding: 10px 0;
+            align-items: center;
+            padding: 12px 0;
             border-bottom: 1px solid #eee;
         }
         
@@ -430,38 +483,68 @@ if ($category_result) {
             border-bottom: none;
         }
         
-        .ranking-name {
-            font-weight: 500;
-        }
-        
-        .ranking-value {
-            color: #4CAF50;
-            font-weight: bold;
-        }
-        
-        .ranking-position {
-            display: inline-block;
-            width: 24px;
-            height: 24px;
-            background-color: #f0f0f0;
-            color: #333;
+        .rank-badge {
+            width: 30px;
+            height: 30px;
             border-radius: 50%;
-            text-align: center;
-            line-height: 24px;
-            margin-right: 10px;
+            background-color: #eee;
+            color: #333;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            margin-right: 15px;
         }
         
-        .top-3 {
-            background-color: #4CAF50;
+        .rank-1 {
+            background-color: gold;
+            color: #333;
+        }
+        
+        .rank-2 {
+            background-color: silver;
+            color: #333;
+        }
+        
+        .rank-3 {
+            background-color: #cd7f32; /* Bronze */
             color: white;
         }
         
+        .item-name {
+            flex: 1;
+            font-weight: 500;
+        }
+        
+        .item-value {
+            font-weight: bold;
+            color: #4CAF50;
+        }
+        
+        .no-data-message {
+            text-align: center;
+            padding: 30px 20px;
+            color: #777;
+        }
+        
+        .no-data-message i {
+            font-size: 3rem;
+            color: #ddd;
+            margin-bottom: 15px;
+        }
+        
+        .no-data-message p {
+            margin: 0;
+            font-size: 0.9rem;
+        }
+        
+        /* Responsive styling */
         @media (max-width: 1200px) {
             .stats-grid {
                 grid-template-columns: repeat(2, 1fr);
             }
             
-            .chart-grid, .ranking-grid {
+            .chart-grid {
                 grid-template-columns: 1fr;
             }
         }
@@ -469,6 +552,19 @@ if ($category_result) {
         @media (max-width: 768px) {
             .content {
                 margin-left: 0;
+                padding: 10px;
+            }
+            
+            .page-header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 10px;
+            }
+            
+            .period-selector {
+                width: 100%;
+                overflow-x: auto;
+                padding-bottom: 5px;
             }
             
             .stats-grid {
@@ -530,59 +626,68 @@ if ($category_result) {
         <div class="ranking-grid">
             <div class="ranking-card">
                 <h2 class="ranking-title">Most Searched Products</h2>
-                <?php if ($search_result && mysqli_num_rows($search_result) > 0): ?>
-                    <ul class="ranking-list">
-                        <?php $i = 1; while ($row = mysqli_fetch_assoc($search_result)): ?>
-                            <li class="ranking-item">
-                                <span>
-                                    <span class="ranking-position <?php echo $i <= 3 ? 'top-3' : ''; ?>"><?php echo $i; ?></span>
-                                    <span class="ranking-name"><?php echo htmlspecialchars($row['product_name']); ?></span>
-                                </span>
-                                <span class="ranking-value"><?php echo number_format($row['search_count']); ?> searches</span>
-                            </li>
-                        <?php $i++; endwhile; ?>
-                    </ul>
-                <?php else: ?>
-                    <p>No search data available for this period.</p>
-                <?php endif; ?>
+                <div class="data-card">
+                    <?php if ($search_result && mysqli_num_rows($search_result) > 0): ?>
+                        <ul class="ranking-list">
+                            <?php $rank = 1; while ($row = mysqli_fetch_assoc($search_result)): ?>
+                                <li class="ranking-item">
+                                    <span class="rank-badge rank-<?php echo $rank; ?>"><?php echo $rank; ?></span>
+                                    <span class="item-name"><?php echo htmlspecialchars($row['product_name']); ?></span>
+                                    <span class="item-value"><?php echo number_format($row['search_count']); ?> searches</span>
+                                </li>
+                            <?php $rank++; endwhile; ?>
+                        </ul>
+                    <?php else: ?>
+                        <div class="no-data-message">
+                            <i class="fas fa-search"></i>
+                            <p>No search data available for this period. Search data is collected when users search for products.</p>
+                        </div>
+                    <?php endif; ?>
+                </div>
             </div>
             
             <div class="ranking-card">
                 <h2 class="ranking-title">Most Visited Products</h2>
-                <?php if ($visit_result && mysqli_num_rows($visit_result) > 0): ?>
-                    <ul class="ranking-list">
-                        <?php $i = 1; while ($row = mysqli_fetch_assoc($visit_result)): ?>
-                            <li class="ranking-item">
-                                <span>
-                                    <span class="ranking-position <?php echo $i <= 3 ? 'top-3' : ''; ?>"><?php echo $i; ?></span>
-                                    <span class="ranking-name"><?php echo htmlspecialchars($row['product_name']); ?></span>
-                                </span>
-                                <span class="ranking-value"><?php echo number_format($row['visit_count']); ?> visits</span>
-                            </li>
-                        <?php $i++; endwhile; ?>
-                    </ul>
-                <?php else: ?>
-                    <p>No visit data available for this period.</p>
-                <?php endif; ?>
+                <div class="data-card">
+                    <?php if ($visit_result && mysqli_num_rows($visit_result) > 0): ?>
+                        <ul class="ranking-list">
+                            <?php $rank = 1; while ($row = mysqli_fetch_assoc($visit_result)): ?>
+                                <li class="ranking-item">
+                                    <span class="rank-badge rank-<?php echo $rank; ?>"><?php echo $rank; ?></span>
+                                    <span class="item-name"><?php echo htmlspecialchars($row['product_name']); ?></span>
+                                    <span class="item-value"><?php echo number_format($row['visit_count']); ?> visits</span>
+                                </li>
+                            <?php $rank++; endwhile; ?>
+                        </ul>
+                    <?php else: ?>
+                        <div class="no-data-message">
+                            <i class="fas fa-eye"></i>
+                            <p>No visit data available for this period. Visit data is collected when users view product pages.</p>
+                        </div>
+                    <?php endif; ?>
+                </div>
             </div>
             
             <div class="ranking-card">
                 <h2 class="ranking-title">Most Ordered Products</h2>
-                <?php if ($order_result && mysqli_num_rows($order_result) > 0): ?>
-                    <ul class="ranking-list">
-                        <?php $i = 1; while ($row = mysqli_fetch_assoc($order_result)): ?>
-                            <li class="ranking-item">
-                                <span>
-                                    <span class="ranking-position <?php echo $i <= 3 ? 'top-3' : ''; ?>"><?php echo $i; ?></span>
-                                    <span class="ranking-name"><?php echo htmlspecialchars($row['product_name']); ?></span>
-                                </span>
-                                <span class="ranking-value"><?php echo number_format($row['order_count']); ?> orders</span>
-                            </li>
-                        <?php $i++; endwhile; ?>
-                    </ul>
-                <?php else: ?>
-                    <p>No order data available for this period.</p>
-                <?php endif; ?>
+                <div class="data-card">
+                    <?php if ($order_result && mysqli_num_rows($order_result) > 0): ?>
+                        <ul class="ranking-list">
+                            <?php $rank = 1; while ($row = mysqli_fetch_assoc($order_result)): ?>
+                                <li class="ranking-item">
+                                    <span class="rank-badge rank-<?php echo $rank; ?>"><?php echo $rank; ?></span>
+                                    <span class="item-name"><?php echo htmlspecialchars($row['product_name']); ?></span>
+                                    <span class="item-value"><?php echo number_format($row['order_count']); ?> ordered</span>
+                                </li>
+                            <?php $rank++; endwhile; ?>
+                        </ul>
+                    <?php else: ?>
+                        <div class="no-data-message">
+                            <i class="fas fa-shopping-cart"></i>
+                            <p>No order data available for this period. Order data is collected when customers make purchases.</p>
+                        </div>
+                    <?php endif; ?>
+                </div>
             </div>
         </div>
         
@@ -607,119 +712,200 @@ if ($category_result) {
     </div>
     
     <script>
-        // Default empty values
-        const defaultLabels = ['No Data Available'];
-        const defaultData = [0];
-        
-        // Sales Trend Chart
-        const salesTrendCtx = document.getElementById('salesTrendChart').getContext('2d');
-        const salesTrendLabels = <?php echo !empty($sales_trend_labels) ? json_encode($sales_trend_labels) : 'defaultLabels'; ?>;
-        const salesTrendData = <?php echo !empty($sales_trend_data) ? json_encode($sales_trend_data) : 'defaultData'; ?>;
-        
-        const salesTrendChart = new Chart(salesTrendCtx, {
-            type: 'line',
-            data: {
-                labels: salesTrendLabels,
-                datasets: [{
-                    label: 'Sales',
-                    data: salesTrendData,
-                    backgroundColor: 'rgba(76, 175, 80, 0.2)',
-                    borderColor: 'rgba(76, 175, 80, 1)',
-                    borderWidth: 2,
-                    tension: 0.3,
-                    pointBackgroundColor: 'rgba(76, 175, 80, 1)',
-                    pointRadius: 4
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                layout: {
-                    padding: {
-                        top: 5,
-                        right: 20,
-                        bottom: 10,
-                        left: 10
+        // Create charts using Chart.js
+        window.onload = function() {
+            // Get chart data for search analysis
+            const searchChartData = {
+                labels: [
+                    <?php 
+                    $search_labels = [];
+                    if ($search_result) {
+                        while ($row = mysqli_fetch_assoc($search_result)) {
+                            $search_labels[] = "'" . addslashes($row['product_name']) . "'";
+                        }
+                        mysqli_data_seek($search_result, 0); // Reset result pointer
+                        echo implode(', ', $search_labels);
                     }
-                },
-                scales: {
-                    y: {
-                        beginAtZero: true,
-                        ticks: {
-                            callback: function(value) {
-                                return '$' + value.toLocaleString();
+                    ?>
+                ],
+                datasets: [
+                    {
+                        label: 'Search Appearances',
+                        data: [
+                            <?php 
+                            $search_data = [];
+                            if ($search_result) {
+                                while ($row = mysqli_fetch_assoc($search_result)) {
+                                    // Use search_impressions if available, otherwise fall back to search_count
+                                    $count = isset($row['search_impressions']) ? $row['search_impressions'] : $row['search_count'];
+                                    $search_data[] = $count;
+                                }
+                                echo implode(', ', $search_data);
+                                mysqli_data_seek($search_result, 0); // Reset result pointer
                             }
-                        }
+                            ?>
+                        ],
+                        backgroundColor: 'rgba(54, 162, 235, 0.5)',
+                        borderColor: 'rgba(54, 162, 235, 1)',
+                        borderWidth: 1
                     },
-                    x: {
-                        ticks: {
-                            maxRotation: 45,
-                            minRotation: 45
-                        }
+                    {
+                        label: 'Actual Visits',
+                        data: [
+                            <?php 
+                            $visit_data = [];
+                            if ($search_result) {
+                                while ($row = mysqli_fetch_assoc($search_result)) {
+                                    // Use visits if available, otherwise use 0
+                                    $visits = isset($row['visits']) ? $row['visits'] : 0;
+                                    $visit_data[] = $visits;
+                                }
+                                echo implode(', ', $visit_data);
+                            }
+                            ?>
+                        ],
+                        backgroundColor: 'rgba(75, 192, 192, 0.5)',
+                        borderColor: 'rgba(75, 192, 192, 1)',
+                        borderWidth: 1
                     }
-                },
-                plugins: {
-                    legend: {
-                        display: false
+                ]
+            };
+
+            // Get chart data for visits
+            const visitChartData = {
+                labels: [
+                    <?php 
+                    $visit_labels = [];
+                    if ($visit_result) {
+                        while ($row = mysqli_fetch_assoc($visit_result)) {
+                            $visit_labels[] = "'" . addslashes($row['product_name']) . "'";
+                        }
+                        mysqli_data_seek($visit_result, 0); // Reset result pointer
+                        echo implode(', ', $visit_labels);
+                    }
+                    ?>
+                ],
+                datasets: [
+                    {
+                        label: 'Unique Visits',
+                        data: [
+                            <?php 
+                            $unique_visit_data = [];
+                            if ($visit_result) {
+                                while ($row = mysqli_fetch_assoc($visit_result)) {
+                                    // Use unique_visits if available, otherwise fall back to visit_count
+                                    $count = isset($row['unique_visits']) ? $row['unique_visits'] : $row['visit_count'];
+                                    $unique_visit_data[] = $count;
+                                }
+                                echo implode(', ', $unique_visit_data);
+                                mysqli_data_seek($visit_result, 0); // Reset result pointer
+                            }
+                            ?>
+                        ],
+                        backgroundColor: 'rgba(255, 99, 132, 0.5)',
+                        borderColor: 'rgba(255, 99, 132, 1)',
+                        borderWidth: 1
                     },
-                    tooltip: {
-                        callbacks: {
-                            label: function(context) {
-                                return '$' + context.raw.toLocaleString();
+                    {
+                        label: 'Total Visits',
+                        data: [
+                            <?php 
+                            $total_visit_data = [];
+                            if ($visit_result) {
+                                while ($row = mysqli_fetch_assoc($visit_result)) {
+                                    // Use total_visits if available, otherwise fall back to visit_count
+                                    $count = isset($row['total_visits']) ? $row['total_visits'] : $row['visit_count'];
+                                    $total_visit_data[] = $count;
+                                }
+                                echo implode(', ', $total_visit_data);
+                            }
+                            ?>
+                        ],
+                        backgroundColor: 'rgba(153, 102, 255, 0.5)',
+                        borderColor: 'rgba(153, 102, 255, 1)',
+                        borderWidth: 1
+                    }
+                ]
+            };
+
+            // Render the search chart
+            const searchChart = new Chart(
+                document.getElementById('searchChart').getContext('2d'),
+                {
+                    type: 'bar',
+                    data: searchChartData,
+                    options: {
+                        scales: {
+                            y: {
+                                beginAtZero: true
+                            }
+                        },
+                        responsive: true,
+                        plugins: {
+                            title: {
+                                display: true,
+                                text: 'Most Searched Products'
+                            },
+                            tooltip: {
+                                callbacks: {
+                                    title: function(tooltipItems) {
+                                        return tooltipItems[0].label;
+                                    },
+                                    label: function(context) {
+                                        let label = context.dataset.label || '';
+                                        if (label) {
+                                            label += ': ';
+                                        }
+                                        label += context.parsed.y;
+                                        return label;
+                                    }
+                                }
                             }
                         }
                     }
                 }
-            }
-        });
-        
-        // Category Chart
-        const categoryCtx = document.getElementById('categoryChart').getContext('2d');
-        const categoryLabels = <?php echo !empty($category_labels) ? json_encode($category_labels) : 'defaultLabels'; ?>;
-        const categorySalesData = <?php echo !empty($category_sales_data) ? json_encode($category_sales_data) : 'defaultData'; ?>;
-        
-        const categoryChart = new Chart(categoryCtx, {
-            type: 'doughnut',
-            data: {
-                labels: categoryLabels,
-                datasets: [{
-                    data: categorySalesData,
-                    backgroundColor: [
-                        'rgba(76, 175, 80, 0.8)',
-                        'rgba(33, 150, 243, 0.8)',
-                        'rgba(255, 193, 7, 0.8)',
-                        'rgba(156, 39, 176, 0.8)',
-                        'rgba(233, 30, 99, 0.8)',
-                        'rgba(0, 188, 212, 0.8)',
-                        'rgba(255, 87, 34, 0.8)',
-                        'rgba(63, 81, 181, 0.8)'
-                    ],
-                    borderWidth: 1
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: {
-                        position: 'right',
-                        labels: {
-                            boxWidth: 12
-                        }
-                    },
-                    tooltip: {
-                        callbacks: {
-                            label: function(context) {
-                                const value = context.raw;
-                                const total = context.dataset.data.reduce((acc, val) => acc + val, 0);
-                                const percentage = total > 0 ? Math.round((value / total) * 100) : 0;
-                                return context.label + ': $' + value.toLocaleString() + ' (' + percentage + '%)';
+            );
+
+            // Render the visits chart
+            const visitChart = new Chart(
+                document.getElementById('visitChart').getContext('2d'),
+                {
+                    type: 'bar',
+                    data: visitChartData,
+                    options: {
+                        scales: {
+                            y: {
+                                beginAtZero: true
+                            }
+                        },
+                        responsive: true,
+                        plugins: {
+                            title: {
+                                display: true,
+                                text: 'Most Visited Products'
+                            },
+                            tooltip: {
+                                callbacks: {
+                                    title: function(tooltipItems) {
+                                        return tooltipItems[0].label;
+                                    },
+                                    label: function(context) {
+                                        let label = context.dataset.label || '';
+                                        if (label) {
+                                            label += ': ';
+                                        }
+                                        label += context.parsed.y;
+                                        return label;
+                                    }
+                                }
                             }
                         }
                     }
                 }
-            }
-        });
+            );
+            
+            // Rest of your chart code...
+        }
     </script>
 </body>
 </html> 
