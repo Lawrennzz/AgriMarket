@@ -1,6 +1,7 @@
 <?php
 session_start();
 require_once '../includes/config.php';
+require_once '../includes/db_connection.php';
 require_once '../includes/functions.php';
 
 // Check if user is logged in and is admin
@@ -112,11 +113,14 @@ if (!$visit_result) {
 
 // Query 3: Most ordered products
 $order_query = "
-    SELECT p.name AS product_name, SUM(oi.quantity) AS order_count
-    FROM order_items oi
-    JOIN products p ON oi.product_id = p.product_id
-    JOIN orders o ON oi.order_id = o.order_id
-    WHERE o.status != 'cancelled' $date_clause
+    SELECT 
+        p.name AS product_name, 
+        COALESCE(SUM(oi.quantity), 0) AS order_count,
+        COALESCE(SUM(oi.quantity * oi.price), 0) AS total_revenue
+    FROM products p
+    LEFT JOIN order_items oi ON oi.product_id = p.product_id
+    LEFT JOIN orders o ON oi.order_id = o.order_id AND o.status IN ('completed', 'shipped', 'delivered')
+        AND o.deleted_at IS NULL $date_clause
     GROUP BY p.product_id
     ORDER BY order_count DESC
     LIMIT 10
@@ -150,9 +154,11 @@ $sales_trend_query = "
     SELECT 
         $date_group AS date,
         $date_label AS label,
-        SUM(total_amount) AS sales
-    FROM orders
-    WHERE status IN ('completed', 'shipped', 'delivered') $date_clause
+        COALESCE(SUM(o.total), 0) AS sales
+    FROM orders o
+    WHERE o.status IN ('completed', 'shipped', 'delivered') 
+    AND o.deleted_at IS NULL
+    $date_clause
     GROUP BY date
     ORDER BY date ASC
 ";
@@ -165,10 +171,14 @@ if (!$sales_trend_result) {
 // Query 6: Total statistics
 $stats_query = "
     SELECT
-        (SELECT COUNT(*) FROM orders WHERE status IN ('completed', 'shipped', 'delivered') $date_clause) AS total_orders,
-        (SELECT SUM(total_amount) FROM orders WHERE status IN ('completed', 'shipped', 'delivered') $date_clause) AS total_revenue,
-        (SELECT COUNT(DISTINCT user_id) FROM orders WHERE status IN ('completed', 'shipped', 'delivered') $date_clause) AS unique_customers,
-        (SELECT AVG(total_amount) FROM orders WHERE status IN ('completed', 'shipped', 'delivered') $date_clause) AS average_order_value
+        COUNT(*) AS total_orders,
+        COALESCE(SUM(total), 0) AS total_revenue,
+        COUNT(DISTINCT user_id) AS unique_customers,
+        COALESCE(AVG(total), 0) AS average_order_value
+    FROM orders 
+    WHERE status IN ('completed', 'shipped', 'delivered')
+    AND deleted_at IS NULL
+    $date_clause
 ";
 $stats_result = mysqli_query($conn, $stats_query);
 
@@ -226,12 +236,15 @@ if ($sales_trend_result) {
 
 // Query 7: Product categories by sales
 $category_query = "
-    SELECT c.name, SUM(oi.quantity * oi.price) AS total_sales
-    FROM order_items oi
-    JOIN products p ON oi.product_id = p.product_id
-    JOIN categories c ON p.category_id = c.category_id
-    JOIN orders o ON oi.order_id = o.order_id
-    WHERE o.status IN ('completed', 'shipped', 'delivered') $date_clause
+    SELECT 
+        c.name, 
+        COALESCE(SUM(oi.quantity * oi.price), 0) AS total_sales,
+        COUNT(DISTINCT o.order_id) as order_count
+    FROM categories c
+    LEFT JOIN products p ON p.category_id = c.category_id
+    LEFT JOIN order_items oi ON oi.product_id = p.product_id
+    LEFT JOIN orders o ON oi.order_id = o.order_id AND o.status IN ('completed', 'shipped', 'delivered') 
+        AND o.deleted_at IS NULL $date_clause
     GROUP BY c.category_id
     ORDER BY total_sales DESC
 ";

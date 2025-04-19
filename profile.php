@@ -61,7 +61,7 @@ if (!$stmt) {
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_profile'])) {
     $name = trim($_POST['name']);
     $email = trim($_POST['email']);
-    $phone = isset($_POST['phone']) ? trim($_POST['phone']) : '';
+    $phone_number = isset($_POST['phone_number']) ? trim($_POST['phone_number']) : '';
     $department = isset($_POST['department']) ? trim($_POST['department']) : '';
     $position = isset($_POST['position']) ? trim($_POST['position']) : '';
     $emergency_contact = isset($_POST['emergency_contact']) ? trim($_POST['emergency_contact']) : '';
@@ -83,11 +83,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_profile'])) {
                 $error_message = "This email is already used by another account.";
             } else {
                 // Update user table
-                $user_update = mysqli_prepare($conn, "UPDATE users SET name = ?, email = ?, phone = ? WHERE user_id = ?");
+                $user_update = mysqli_prepare($conn, "UPDATE users SET name = ?, email = ?, phone_number = ? WHERE user_id = ?");
                 if (!$user_update) {
                     $error_message = "Database error: " . mysqli_error($conn);
                 } else {
-                    mysqli_stmt_bind_param($user_update, "sssi", $name, $email, $phone, $staff_id);
+                    mysqli_stmt_bind_param($user_update, "sssi", $name, $email, $phone_number, $staff_id);
                     $user_updated = mysqli_stmt_execute($user_update);
                     
                     // Update or insert into staff_details table
@@ -555,10 +555,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['upload_avatar'])) {
                             <span><?php echo htmlspecialchars($staff['email']); ?></span>
                         </div>
                         
-                        <?php if (isset($staff['phone']) && !empty($staff['phone'])): ?>
+                        <?php if (isset($staff['phone_number']) && !empty($staff['phone_number'])): ?>
                             <div class="info-item">
                                 <i class="fas fa-phone"></i>
-                                <span><?php echo htmlspecialchars($staff['phone']); ?></span>
+                                <span><?php echo htmlspecialchars($staff['phone_number']); ?></span>
                             </div>
                         <?php endif; ?>
                         
@@ -607,8 +607,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['upload_avatar'])) {
                             </div>
                             
                             <div class="form-group">
-                                <label for="phone" class="form-label">Phone Number</label>
-                                <input type="tel" name="phone" id="phone" class="form-control" value="<?php echo isset($staff['phone']) ? htmlspecialchars($staff['phone']) : ''; ?>">
+                                <label for="phone_number" class="form-label">Phone Number</label>
+                                <input type="tel" name="phone_number" id="phone_number" class="form-control" value="<?php echo isset($staff['phone_number']) ? htmlspecialchars($staff['phone_number']) : ''; ?>">
                             </div>
                             
                             <div class="form-group">

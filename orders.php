@@ -275,6 +275,23 @@ if ($role === 'vendor') {
             color: white;
         }
         
+        .review-btn {
+            margin-top: 8px;
+            display: inline-block;
+            font-size: 0.85rem;
+            padding: 4px 10px;
+            border-radius: 4px;
+        }
+        
+        .reviewed-badge {
+            color: #4CAF50;
+            font-size: 0.85rem;
+            margin-top: 8px;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+        }
+        
         @media (max-width: 768px) {
             .order-header {
                 flex-direction: column;
@@ -400,6 +417,30 @@ if ($role === 'vendor') {
                                 <div class="item-details">
                                     <div class="item-name"><?php echo htmlspecialchars($item['name']); ?></div>
                                     <div class="item-meta">Qty: <?php echo $item['quantity']; ?></div>
+                                    
+                                    <?php if ($role === 'customer' && $order['status'] === 'delivered'): ?>
+                                        <?php
+                                        // Check if user has already reviewed this product
+                                        $review_check_sql = "SELECT * FROM reviews WHERE user_id = ? AND product_id = ?";
+                                        $review_stmt = mysqli_prepare($conn, $review_check_sql);
+                                        mysqli_stmt_bind_param($review_stmt, "ii", $user_id, $item['product_id']);
+                                        mysqli_stmt_execute($review_stmt);
+                                        $review_result = mysqli_stmt_get_result($review_stmt);
+                                        $has_reviewed = mysqli_num_rows($review_result) > 0;
+                                        mysqli_stmt_close($review_stmt);
+                                        ?>
+                                        
+                                        <?php if (!$has_reviewed): ?>
+                                            <a href="add_review.php?order_id=<?php echo $order['order_id']; ?>&product_id=<?php echo $item['product_id']; ?>" 
+                                               class="btn btn-outline review-btn">
+                                                <i class="fas fa-star"></i> Write Review
+                                            </a>
+                                        <?php else: ?>
+                                            <span class="reviewed-badge">
+                                                <i class="fas fa-check-circle"></i> Reviewed
+                                            </span>
+                                        <?php endif; ?>
+                                    <?php endif; ?>
                                 </div>
                                 <div class="item-price">$<?php echo number_format($item['price'], 2); ?></div>
                             </div>

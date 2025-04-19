@@ -20,6 +20,11 @@ $article_query = "
     WHERE a.article_id = ? AND a.status = 'published'
 ";
 $article_stmt = mysqli_prepare($conn, $article_query);
+if (!$article_stmt) {
+    // Handle the error - prepare failed
+    header('Location: knowledge_hub.php');
+    exit();
+}
 mysqli_stmt_bind_param($article_stmt, "i", $article_id);
 mysqli_stmt_execute($article_stmt);
 $article_result = mysqli_stmt_get_result($article_stmt);

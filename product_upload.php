@@ -22,19 +22,19 @@ while ($category = mysqli_fetch_assoc($categories_query)) {
 mysqli_data_seek($categories_query, 0); // Reset the pointer for later use
 
 // Get vendor_id for the current user
-$user_id = $_SESSION['user_id'];
-$vendor_query = "SELECT vendor_id FROM vendors WHERE user_id = ?";
-$vendor_stmt = mysqli_prepare($conn, $vendor_query);
-mysqli_stmt_bind_param($vendor_stmt, "i", $user_id);
-mysqli_stmt_execute($vendor_stmt);
-$vendor_result = mysqli_stmt_get_result($vendor_stmt);
+    $user_id = $_SESSION['user_id'];
+    $vendor_query = "SELECT vendor_id FROM vendors WHERE user_id = ?";
+    $vendor_stmt = mysqli_prepare($conn, $vendor_query);
+    mysqli_stmt_bind_param($vendor_stmt, "i", $user_id);
+    mysqli_stmt_execute($vendor_stmt);
+    $vendor_result = mysqli_stmt_get_result($vendor_stmt);
 $vendor_id = null;
 
-if ($vendor_row = mysqli_fetch_assoc($vendor_result)) {
-    $vendor_id = $vendor_row['vendor_id'];
-} else {
-    $error_message = "Vendor profile not found. Please create a vendor profile first.";
-}
+    if ($vendor_row = mysqli_fetch_assoc($vendor_result)) {
+        $vendor_id = $vendor_row['vendor_id'];
+    } else {
+        $error_message = "Vendor profile not found. Please create a vendor profile first.";
+    }
 mysqli_stmt_close($vendor_stmt);
 
 // Handle single product upload
@@ -732,7 +732,7 @@ if (isset($_GET['download_sample'])) {
                                         <label class="form-label" for="packaging">Packaging</label>
                                         <input type="text" id="packaging" name="packaging" class="form-control" 
                                                value="<?php echo htmlspecialchars($_POST['packaging'] ?? ''); ?>">
-                                    </div>
+                        </div>
                     </div>
 
                     <div class="form-section">

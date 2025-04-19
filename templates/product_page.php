@@ -201,15 +201,45 @@
         .reviewer-info {
             display: flex;
             justify-content: space-between;
+            align-items: center;
             margin-bottom: 1rem;
         }
 
         .reviewer-name {
             font-weight: 500;
+            color: var(--dark-gray);
         }
 
         .review-date {
             color: var(--medium-gray);
+            font-size: 0.9rem;
+        }
+
+        .stars {
+            color: #ffc107;
+            margin-bottom: 0.75rem;
+        }
+
+        .review-card p {
+            color: var(--dark-gray);
+            line-height: 1.6;
+            margin: 0;
+        }
+
+        .verified-badge {
+            background-color: rgba(76, 175, 80, 0.1);
+            color: var(--success-color);
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.25rem;
+        }
+
+        .reviewer-stats {
+            color: var(--medium-gray);
+            font-size: 0.9rem;
         }
 
         .related-products {
@@ -419,10 +449,7 @@
 
         <div class="reviews-section">
             <div class="reviews-header">
-                <h2>Customer Reviews</h2>
-                <?php if (isset($_SESSION['user_id']) && $this->getRole() !== 'vendor'): ?>
-                    <a href="add-review.php?product_id=<?php echo $product['product_id']; ?>" class="btn btn-primary">Write a Review</a>
-                <?php endif; ?>
+                <h2>Customer Reviews (<?php echo $this->getTotalReviews(); ?>)</h2>
             </div>
 
             <?php if ($this->getTotalReviews() > 0): ?>

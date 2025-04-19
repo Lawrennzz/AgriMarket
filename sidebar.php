@@ -52,12 +52,30 @@ $admin_prefix = $in_admin_dir ? '../' : '';
         <li class="<?php echo $current_page === 'audit_logs.php' ? 'active' : ''; ?>">
             <a href="<?php echo $admin_prefix; ?>audit_logs.php"><i class="fas fa-history"></i> Audit Logs</a>
         </li>
-        <li class="<?php echo $current_page === 'reports.php' ? 'active' : ''; ?>">
-            <a href="<?php echo $admin_prefix; ?>admin/reports.php"><i class="fas fa-chart-bar"></i> Reports & Analytics</a>
+        
+        <!-- Analytics Section -->
+        <li class="sidebar-dropdown <?php echo in_array($current_page, ['reports.php', 'advanced_reports.php', 'check_analytics.php', 'seed_analytics_data.php']) ? 'active' : ''; ?>">
+            <a href="#"><i class="fas fa-chart-bar"></i> Analytics</a>
+            <ul class="sidebar-submenu" style="display: <?php echo in_array($current_page, ['reports.php', 'advanced_reports.php', 'check_analytics.php', 'seed_analytics_data.php']) ? 'block' : 'none'; ?>;">
+                <li class="<?php echo $current_page === 'reports.php' ? 'active' : ''; ?>">
+                    <a href="<?php echo $admin_prefix; ?>admin/reports.php"><i class="fas fa-file-alt"></i> Basic Reports</a>
+                </li>
+                <li class="<?php echo $current_page === 'advanced_reports.php' ? 'active' : ''; ?>">
+                    <a href="<?php echo $admin_prefix; ?>admin/advanced_reports.php"><i class="fas fa-chart-line"></i> Advanced Analytics</a>
+                </li>
+                <li class="<?php echo $current_page === 'check_analytics.php' ? 'active' : ''; ?>">
+                    <a href="<?php echo $admin_prefix; ?>admin/check_analytics.php" class="analytics-action">
+                        <i class="fas fa-check-circle"></i> Check Analytics
+                    </a>
+                </li>
+                <li class="<?php echo $current_page === 'seed_analytics_data.php' ? 'active' : ''; ?>">
+                    <a href="<?php echo $admin_prefix; ?>admin/seed_analytics_data.php" class="analytics-action">
+                        <i class="fas fa-database"></i> Seed Analytics
+                    </a>
+                </li>
+            </ul>
         </li>
-        <li class="<?php echo $current_page === 'advanced_reports.php' ? 'active' : ''; ?>">
-            <a href="<?php echo $admin_prefix; ?>admin/advanced_reports.php"><i class="fas fa-chart-line"></i> Advanced Analytics</a>
-        </li>
+
         <li class="<?php echo $current_page === 'notifications.php' ? 'active' : ''; ?>">
             <a href="<?php echo $in_admin_dir ? 'notifications.php' : 'admin/notifications.php'; ?>"><i class="fas fa-bell"></i> Notifications</a>
         </li>
@@ -153,6 +171,30 @@ $admin_prefix = $in_admin_dir ? '../' : '';
 .sidebar-submenu li a {
     padding: 8px 20px;
     font-size: 0.9rem;
+}
+
+/* Analytics action buttons style */
+.analytics-action {
+    background-color: #4CAF50 !important;
+    color: white !important;
+    border-radius: 4px;
+    margin: 5px 0;
+    padding: 8px 15px !important;
+}
+
+.analytics-action:hover {
+    background-color: #45a049 !important;
+    transform: translateY(-1px);
+    transition: all 0.2s;
+}
+
+.analytics-action i {
+    color: white !important;
+}
+
+.sidebar-submenu li a.analytics-action {
+    font-weight: 500;
+    letter-spacing: 0.3px;
 }
 
 .content {

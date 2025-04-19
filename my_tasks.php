@@ -17,19 +17,11 @@ if (isset($_POST['update_task']) && isset($_POST['task_id']) && isset($_POST['st
     $new_status = mysqli_real_escape_string($conn, $_POST['status']);
     $notes = isset($_POST['notes']) ? mysqli_real_escape_string($conn, $_POST['notes']) : '';
     
-    // Additional fields for completion
-    $completed_at = null;
-    if ($new_status === 'completed') {
-        $completed_at = date('Y-m-d H:i:s');
-    }
-    
     // Update task status
     $update_query = "
         UPDATE staff_tasks
         SET status = ?, 
-            notes = CONCAT(IFNULL(notes, ''), '\n" . date('Y-m-d H:i:s') . " - Status updated to " . $new_status . ":\n" . $notes . "\n'),
-            updated_at = NOW(),
-            completed_at = " . ($completed_at ? "'$completed_at'" : "completed_at") . "
+            updated_at = NOW()
         WHERE task_id = ? AND staff_id = ?
     ";
     
@@ -83,7 +75,7 @@ if ($priority_filter !== 'all') {
 }
 
 if ($search) {
-    $tasks_query .= " AND (t.title LIKE '%$search%' OR t.description LIKE '%$search%')";
+    $tasks_query .= " AND (t.description LIKE '%$search%')";
 }
 
 // Add sorting
@@ -266,20 +258,38 @@ $page_title = "My Tasks";
             border-radius: 8px;
             box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
             overflow: hidden;
+            border: 1px solid #dee2e6;
         }
         
         .tasks-table {
             width: 100%;
             border-collapse: collapse;
+            border-spacing: 0;
+        }
+        
+        .tasks-table tr {
+            background-color: #fff;
+        }
+        
+        .tasks-table tr:not(:last-child) {
+            border-bottom: 1px solid #dee2e6;
+        }
+        
+        .tasks-table th, 
+        .tasks-table td {
+            padding: 15px;
+            border: none;
+        }
+        
+        .tasks-table thead {
+            background-color: #f8f9fa;
+            border-bottom: 1px solid #dee2e6;
         }
         
         .tasks-table th {
-            background-color: #f8f9fa;
             text-align: left;
-            padding: 12px 15px;
             font-weight: 600;
             color: #495057;
-            border-bottom: 1px solid #dee2e6;
         }
         
         .tasks-table th a {
@@ -299,13 +309,8 @@ $page_title = "My Tasks";
         }
         
         .tasks-table td {
-            padding: 12px 15px;
-            border-bottom: 1px solid #dee2e6;
+            padding: 15px;
             vertical-align: middle;
-        }
-        
-        .tasks-table tr:last-child td {
-            border-bottom: none;
         }
         
         .tasks-table tr:hover {
@@ -333,11 +338,12 @@ $page_title = "My Tasks";
         }
         
         .status-badge {
-            padding: 5px 10px;
+            padding: 6px 12px;
             border-radius: 12px;
-            font-size: 12px;
+            font-size: 14px;
             font-weight: 500;
             display: inline-block;
+            white-space: nowrap;
         }
         
         .status-pending {
@@ -345,9 +351,9 @@ $page_title = "My Tasks";
             color: #856404;
         }
         
-        .status-in-progress {
-            background-color: #cce5ff;
-            color: #004085;
+        .status-in_progress {
+            background-color: #f2f2f2;
+            color: #495057;
         }
         
         .status-completed {
@@ -360,22 +366,56 @@ $page_title = "My Tasks";
             color: #721c24;
         }
         
+        .status-shipped {
+            background-color: #d1ecf1;
+            color: #0c5460;
+        }
+        
+        .status-delivered {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        
+        .status-cancelled {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        
+        .status-processing {
+            background-color: #cce5ff;
+            color: #004085;
+        }
+        
         .task-actions {
             display: flex;
-            gap: 8px;
+            gap: 12px;
+            justify-content: center;
+            align-items: center;
+            padding: 15px;
+            border: none !important;
         }
         
         .action-button {
-            background-color: transparent;
-            border: none;
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 50%;
+            padding: 0;
             cursor: pointer;
-            font-size: 16px;
+            font-size: 15px;
             color: #6c757d;
-            transition: color 0.2s;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 38px;
+            height: 38px;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
         }
         
         .action-button:hover {
-            color: #3498db;
+            background-color: #e9ecef;
+            color: #495057;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
         }
         
         .view-button:hover {
@@ -383,7 +423,7 @@ $page_title = "My Tasks";
         }
         
         .update-button:hover {
-            color: #27ae60;
+            color: #3498db;
         }
         
         .delete-button:hover {
@@ -657,7 +697,7 @@ $page_title = "My Tasks";
         </form>
         
         <div class="tasks-container">
-            <?php if (mysqli_num_rows($tasks_result) > 0): ?>
+            <?php if ($tasks_result !== false && mysqli_num_rows($tasks_result) > 0): ?>
                 <table class="tasks-table">
                     <thead>
                         <tr>
@@ -675,11 +715,21 @@ $page_title = "My Tasks";
                             <?php
                             // Determine if task is overdue
                             $is_overdue = ($task['status'] !== 'completed' && strtotime($task['due_date']) < time());
-                            $status_class = $is_overdue ? 'status-overdue' : 'status-' . $task['status'];
-                            $status_text = $is_overdue ? 'Overdue' : ucfirst($task['status']);
+                            
+                            // Map database status to display status
+                            if ($is_overdue) {
+                                $status_class = 'status-overdue';
+                                $status_text = 'Overdue';
+                            } else if ($task['status'] == 'in_progress') {
+                                $status_class = 'status-in_progress';
+                                $status_text = 'In progress';
+                            } else {
+                                $status_class = 'status-' . $task['status'];
+                                $status_text = ucfirst($task['status']);
+                            }
                             
                             // If title doesn't exist, use the first part of description as title
-                            $task_title = isset($task['title']) ? $task['title'] : (substr($task['description'], 0, 30) . '...');
+                            $task_title = substr($task['description'], 0, 30) . (strlen($task['description']) > 30 ? '...' : '');
                             ?>
                             <tr>
                                 <td>
@@ -759,8 +809,8 @@ $page_title = "My Tasks";
                     
                     <div class="form-group">
                         <label class="form-label" for="notes">Notes</label>
-                        <textarea class="form-control" name="notes" id="update_notes" rows="4" placeholder="Add notes about this status update..."></textarea>
-                        <small class="form-text">These notes will be added to the task history.</small>
+                        <textarea class="form-control" name="notes" id="update_notes" rows="4" disabled placeholder="Notes feature not available in current version"></textarea>
+                        <small class="form-text">Notes feature is currently disabled - database column not available.</small>
                     </div>
                 </form>
             </div>

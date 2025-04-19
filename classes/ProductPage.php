@@ -13,6 +13,9 @@ class ProductPage {
     private $reviews;
     private $avg_rating;
     private $total_reviews;
+    private $can_review;
+    private $has_reviewed;
+    private $purchase_date;
     
     public function __construct($product_id = null) {
         // Initialize database connection
@@ -46,6 +49,7 @@ class ProductPage {
         // Load related data
         $this->loadRelatedProducts();
         $this->loadReviews();
+        $this->checkReviewEligibility();
         
         // Log product view
         $this->logProductView();
@@ -95,37 +99,75 @@ class ProductPage {
     }
     
     private function loadReviews() {
-        // Get product reviews
-        $sql = "SELECT r.*, u.name as reviewer_name 
+        $sql = "SELECT r.*, u.name as reviewer_name, 
+                (SELECT COUNT(*) FROM reviews WHERE user_id = r.user_id) as total_reviews,
+                CASE WHEN o.status = 'delivered' THEN 1 ELSE 0 END as verified_purchase
                 FROM reviews r 
-                LEFT JOIN users u ON r.user_id = u.user_id 
-                WHERE r.product_id = ? 
+                JOIN users u ON r.user_id = u.user_id
+                LEFT JOIN orders o ON r.user_id = o.user_id AND o.status = 'delivered'
+                WHERE r.product_id = ?
                 ORDER BY r.created_at DESC";
-        $stmt = $this->db->prepare($sql);
         
-        if ($stmt === false) {
-            $this->reviews = [];
-            $this->avg_rating = 0;
-            $this->total_reviews = 0;
+        $stmt = $this->db->prepare($sql);
+        if ($stmt) {
+            mysqli_stmt_bind_param($stmt, "i", $this->product_id);
+            mysqli_stmt_execute($stmt);
+            $result = mysqli_stmt_get_result($stmt);
+            $this->reviews = mysqli_fetch_all($result, MYSQLI_ASSOC);
+            mysqli_stmt_close($stmt);
+            
+            // Calculate average rating and total reviews
+            $this->total_reviews = count($this->reviews);
+            if ($this->total_reviews > 0) {
+                $total_rating = array_sum(array_column($this->reviews, 'rating'));
+                $this->avg_rating = $total_rating / $this->total_reviews;
+            } else {
+                $this->avg_rating = 0;
+            }
+        }
+    }
+    
+    private function checkReviewEligibility() {
+        if (!$this->user_id) {
+            $this->can_review = false;
+            $this->has_reviewed = false;
             return;
         }
         
-        mysqli_stmt_bind_param($stmt, "i", $this->product_id);
-        mysqli_stmt_execute($stmt);
-        $result = mysqli_stmt_get_result($stmt);
+        // Check if user has already reviewed
+        $sql = "SELECT created_at FROM reviews 
+                WHERE user_id = ? AND product_id = ?";
+        $stmt = $this->db->prepare($sql);
+        if ($stmt) {
+            mysqli_stmt_bind_param($stmt, "ii", $this->user_id, $this->product_id);
+            mysqli_stmt_execute($stmt);
+            $result = mysqli_stmt_get_result($stmt);
+            $this->has_reviewed = mysqli_num_rows($result) > 0;
+            mysqli_stmt_close($stmt);
+        }
         
-        // Calculate average rating
-        $this->reviews = [];
-        $this->total_reviews = mysqli_num_rows($result);
-        $this->avg_rating = 0;
-        
-        if ($this->total_reviews > 0) {
-            $ratings_sum = 0;
-            while ($review = mysqli_fetch_assoc($result)) {
-                $ratings_sum += $review['rating'];
-                $this->reviews[] = $review;
+        // Check if user has purchased and received the product
+        if (!$this->has_reviewed) {
+            $sql = "SELECT o.created_at 
+                    FROM orders o 
+                    JOIN order_items oi ON o.order_id = oi.order_id 
+                    WHERE o.user_id = ? AND oi.product_id = ? AND o.status = 'delivered'
+                    ORDER BY o.created_at DESC LIMIT 1";
+            $stmt = $this->db->prepare($sql);
+            if ($stmt) {
+                mysqli_stmt_bind_param($stmt, "ii", $this->user_id, $this->product_id);
+                mysqli_stmt_execute($stmt);
+                $result = mysqli_stmt_get_result($stmt);
+                if ($row = mysqli_fetch_assoc($result)) {
+                    $this->can_review = true;
+                    $this->purchase_date = $row['created_at'];
+                } else {
+                    $this->can_review = false;
+                }
+                mysqli_stmt_close($stmt);
             }
-            $this->avg_rating = round($ratings_sum / $this->total_reviews, 1);
+        } else {
+            $this->can_review = false;
         }
     }
     
@@ -149,15 +191,15 @@ class ProductPage {
     }
     
     public function getReviews() {
-        return $this->reviews;
+        return $this->reviews ?? [];
     }
     
     public function getAverageRating() {
-        return $this->avg_rating;
+        return $this->avg_rating ?? 0;
     }
     
     public function getTotalReviews() {
-        return $this->total_reviews;
+        return $this->total_reviews ?? 0;
     }
     
     public function getUserId() {
@@ -166,6 +208,18 @@ class ProductPage {
     
     public function getRole() {
         return $this->role;
+    }
+    
+    public function canReview() {
+        return $this->can_review ?? false;
+    }
+    
+    public function hasReviewed() {
+        return $this->has_reviewed ?? false;
+    }
+    
+    public function getPurchaseDate() {
+        return $this->purchase_date;
     }
     
     public function render() {

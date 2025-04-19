@@ -305,6 +305,11 @@ $page_title = "Process Orders";
             color: #721c24;
         }
         
+        .status-completed {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        
         .action-buttons {
             display: flex;
             gap: 5px;

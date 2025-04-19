@@ -443,7 +443,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             padding-bottom: 0.5rem;
             border-bottom: 1px solid var(--light-gray);
         }
-        
+
         .summary-items {
             margin-bottom: 1.5rem;
             max-height: 300px;

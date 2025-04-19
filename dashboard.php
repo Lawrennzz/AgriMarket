@@ -238,6 +238,21 @@ if ($role === 'vendor') {
             color: #856404;
         }
 
+        .status-processing {
+            background: #cce5ff;
+            color: #004085;
+        }
+
+        .status-shipped {
+            background: #d1ecf1;
+            color: #0c5460;
+        }
+
+        .status-delivered {
+            background: #d4edda;
+            color: #155724;
+        }
+
         .status-completed {
             background: #d4edda;
             color: #155724;

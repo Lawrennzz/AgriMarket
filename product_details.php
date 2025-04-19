@@ -38,7 +38,11 @@ if (isset($_GET['id']) && is_numeric($_GET['id'])) {
             
             // Get product reviews
             $reviews_query = "
-                SELECT r.*, u.name as reviewer_name
+                SELECT r.*, u.name as reviewer_name, 
+                       (SELECT COUNT(*) FROM reviews WHERE user_id = r.user_id) as total_reviews,
+                       (SELECT COUNT(*) FROM order_items oi 
+                        JOIN orders o ON oi.order_id = o.order_id 
+                        WHERE o.user_id = r.user_id AND oi.product_id = r.product_id) as verified_purchase
                 FROM reviews r
                 LEFT JOIN users u ON r.user_id = u.user_id
                 WHERE r.product_id = ?
@@ -73,6 +77,30 @@ if (isset($_GET['id']) && is_numeric($_GET['id'])) {
             mysqli_stmt_bind_param($related_stmt, "ii", $product['category_id'], $product_id);
             mysqli_stmt_execute($related_stmt);
             $related_result = mysqli_stmt_get_result($related_stmt);
+
+            if (isset($_SESSION['user_id'])) {
+                // Check if user has purchased this product
+                $purchase_check_query = "
+                    SELECT o.order_id, o.created_at as purchase_date, oi.quantity
+                    FROM order_items oi 
+                    JOIN orders o ON oi.order_id = o.order_id 
+                    WHERE o.user_id = ? AND oi.product_id = ? AND o.status = 'delivered'
+                    ORDER BY o.created_at DESC
+                    LIMIT 1
+                ";
+                $purchase_stmt = mysqli_prepare($conn, $purchase_check_query);
+                mysqli_stmt_bind_param($purchase_stmt, "ii", $_SESSION['user_id'], $product_id);
+                mysqli_stmt_execute($purchase_stmt);
+                $purchase_result = mysqli_stmt_get_result($purchase_stmt);
+                $purchase_data = mysqli_fetch_assoc($purchase_result);
+                
+                $can_review = $purchase_data !== null;
+                $has_reviewed = hasUserReviewedProduct($_SESSION['user_id'], $product['product_id']);
+                
+                if ($can_review) {
+                    $purchase_date = date('F j, Y', strtotime($purchase_data['purchase_date']));
+                }
+            }
         } else {
             $error_message = "Product not found";
         }
@@ -398,10 +426,115 @@ $page_title = $product ? $product['name'] : "Product Not Found";
                 grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
             }
         }
+        
+        .reviews-summary {
+            background-color: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+        }
+        
+        .average-rating {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        
+        .rating-number {
+            font-size: 2.5rem;
+            font-weight: bold;
+            color: #333;
+        }
+        
+        .total-reviews {
+            color: #666;
+            font-size: 0.9rem;
+        }
+        
+        .review-item {
+            border: 1px solid #eee;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .reviewer-info {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        
+        .verified-badge {
+            color: #28a745;
+            font-size: 0.8rem;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        
+        .reviewer-stats {
+            color: #666;
+            font-size: 0.8rem;
+        }
+        
+        .purchase-info {
+            background-color: #e8f5e9;
+            color: #2e7d32;
+            padding: 10px 15px;
+            border-radius: 4px;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .cannot-review, .login-to-review {
+            background-color: #fff3cd;
+            color: #856404;
+            padding: 15px;
+            border-radius: 4px;
+            margin-top: 20px;
+        }
+        
+        .info-message {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+        
+        .browse-products {
+            display: inline-block;
+            background-color: #4CAF50;
+            color: white;
+            padding: 8px 15px;
+            border-radius: 4px;
+            text-decoration: none;
+            margin-top: 10px;
+        }
+        
+        .browse-products:hover {
+            background-color: #45a049;
+        }
+        
+        .write-review-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background-color: #2196F3;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 4px;
+            text-decoration: none;
+        }
+        
+        .write-review-btn:hover {
+            background-color: #1976D2;
+        }
     </style>
 </head>
 <body>
-    <?php include 'header.php'; ?>
+    <?php include 'includes/header.php'; ?>
     
     <div class="container">
         <div class="breadcrumb">
@@ -561,10 +694,38 @@ $page_title = $product ? $product['name'] : "Product Not Found";
                     <h3>Customer Reviews</h3>
                     <div class="reviews-container">
                         <?php if (mysqli_num_rows($reviews_result) > 0): ?>
+                            <div class="reviews-summary">
+                                <div class="average-rating">
+                                    <span class="rating-number"><?php echo number_format($avg_rating, 1); ?></span>
+                                    <div class="star-rating">
+                                        <?php for ($i = 1; $i <= 5; $i++): ?>
+                                            <?php if ($i <= $avg_rating): ?>
+                                                <i class="fas fa-star"></i>
+                                            <?php elseif ($i <= $avg_rating + 0.5): ?>
+                                                <i class="fas fa-star-half-alt"></i>
+                                            <?php else: ?>
+                                                <i class="far fa-star"></i>
+                                            <?php endif; ?>
+                                        <?php endfor; ?>
+                                    </div>
+                                    <span class="total-reviews">(<?php echo mysqli_num_rows($reviews_result); ?> reviews)</span>
+                                </div>
+                            </div>
+                            
                             <?php while ($review = mysqli_fetch_assoc($reviews_result)): ?>
                                 <div class="review-item">
                                     <div class="review-header">
-                                        <div class="reviewer-name"><?php echo htmlspecialchars($review['reviewer_name']); ?></div>
+                                        <div class="reviewer-info">
+                                            <div class="reviewer-name"><?php echo htmlspecialchars($review['reviewer_name']); ?></div>
+                                            <?php if ($review['verified_purchase'] > 0): ?>
+                                                <span class="verified-badge">
+                                                    <i class="fas fa-check-circle"></i> Verified Purchase
+                                                </span>
+                                            <?php endif; ?>
+                                            <div class="reviewer-stats">
+                                                <?php echo $review['total_reviews']; ?> reviews
+                                            </div>
+                                        </div>
                                         <div class="review-date"><?php echo date('F j, Y', strtotime($review['created_at'])); ?></div>
                                     </div>
                                     <div class="star-rating">
@@ -592,12 +753,31 @@ $page_title = $product ? $product['name'] : "Product Not Found";
                         <?php endif; ?>
                         
                         <?php if (isset($_SESSION['user_id'])): ?>
-                            <div class="add-review">
-                                <a href="add-review.php?product_id=<?php echo $product['product_id']; ?>" class="write-review-btn">Write a Review</a>
-                            </div>
+                            <?php if ($can_review && !$has_reviewed): ?>
+                                <div class="add-review">
+                                    <div class="purchase-info">
+                                        <i class="fas fa-shopping-bag"></i>
+                                        Purchased on <?php echo $purchase_date; ?>
+                                    </div>
+                                    <a href="add-review.php?product_id=<?php echo $product['product_id']; ?>" class="write-review-btn">
+                                        <i class="fas fa-pen"></i> Write a Review
+                                    </a>
+                                </div>
+                            <?php elseif (!$can_review): ?>
+                                <div class="cannot-review">
+                                    <div class="info-message">
+                                        <i class="fas fa-info-circle"></i>
+                                        <p>You can only review this product after purchasing and receiving it.</p>
+                                    </div>
+                                    <a href="shop.php" class="browse-products">Browse Products</a>
+                                </div>
+                            <?php endif; ?>
                         <?php else: ?>
                             <div class="login-to-review">
-                                <p>Please <a href="login.php">login</a> to leave a review.</p>
+                                <div class="info-message">
+                                    <i class="fas fa-user"></i>
+                                    <p>Please <a href="login.php">login</a> to leave a review.</p>
+                                </div>
                             </div>
                         <?php endif; ?>
                     </div>

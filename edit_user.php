@@ -182,6 +182,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <label class="form-label" for="role">Role*</label>
                 <select id="role" name="role" class="form-control" required>
                     <option value="admin" <?php echo ($role == 'admin') ? 'selected' : ''; ?>>Admin</option>
+                    <option value="staff" <?php echo ($role == 'staff') ? 'selected' : ''; ?>>Staff</option>
                     <option value="vendor" <?php echo ($role == 'vendor') ? 'selected' : ''; ?>>Vendor</option>
                     <option value="customer" <?php echo ($role == 'customer') ? 'selected' : ''; ?>>Customer</option>
                 </select>

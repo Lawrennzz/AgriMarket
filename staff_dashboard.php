@@ -355,6 +355,11 @@ $page_title = "Staff Dashboard";
             color: #004085;
         }
         
+        .status-in_progress {
+            background-color: #cce5ff;
+            color: #004085;
+        }
+        
         .status-completed {
             background-color: #d4edda;
             color: #155724;
@@ -594,7 +599,9 @@ $page_title = "Staff Dashboard";
                                         <span><?php echo date('M j, Y', strtotime($order['created_at'])); ?></span>
                                         <?php
                                         $status_class = '';
-                                        if ($order['status'] == 'processing') {
+                                        if ($order['status'] == 'pending') {
+                                            $status_class = 'status-pending';
+                                        } elseif ($order['status'] == 'processing') {
                                             $status_class = 'status-processing';
                                         } elseif ($order['status'] == 'shipped') {
                                             $status_class = 'status-shipped';

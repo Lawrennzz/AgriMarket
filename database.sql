@@ -105,15 +105,18 @@ CREATE TABLE order_status_history (
 
 -- Reviews
 CREATE TABLE reviews (
-    review_id INT AUTO_INCREMENT PRIMARY KEY,
-    product_id INT,
-    user_id INT,
-    rating INT CHECK (rating BETWEEN 1 AND 5),
-    comment TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (product_id) REFERENCES products(product_id) ON DELETE CASCADE,
-    FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE SET NULL
-);
+    review_id INT PRIMARY KEY AUTO_INCREMENT,
+    user_id INT NOT NULL,
+    product_id INT NOT NULL,
+    rating DECIMAL(2,1) NOT NULL CHECK (rating >= 1 AND rating <= 5),
+    comment TEXT NOT NULL,
+    status ENUM('pending', 'approved', 'rejected') DEFAULT 'pending',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    moderated_at DATETIME,
+    FOREIGN KEY (user_id) REFERENCES users(user_id),
+    FOREIGN KEY (product_id) REFERENCES products(product_id),
+    UNIQUE KEY unique_user_product (user_id, product_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- Notifications
 CREATE TABLE notifications (
@@ -595,3 +598,7 @@ DELIMITER ;
 -- ================================
 
 SELECT 'Database update completed successfully' AS 'Result';
+
+-- Add rating column to products table if not exists
+ALTER TABLE products
+ADD COLUMN IF NOT EXISTS rating DECIMAL(2,1) DEFAULT NULL;
