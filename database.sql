@@ -604,3 +604,99 @@ SELECT 'Database update completed successfully' AS 'Result';
 -- Add rating column to products table if not exists
 ALTER TABLE products
 ADD COLUMN IF NOT EXISTS rating DECIMAL(2,1) DEFAULT NULL;
+
+-- ================================
+-- Analytics Tables
+-- ================================
+
+-- Check if analytics table exists and create it if not
+DROP TABLE IF EXISTS analytics;
+CREATE TABLE analytics (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    type VARCHAR(50) NOT NULL,
+    product_id INT,
+    session_id VARCHAR(100),
+    user_id INT,
+    user_ip VARCHAR(45),
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    INDEX (type),
+    INDEX (product_id),
+    INDEX (user_id),
+    INDEX (created_at)
+);
+
+-- Check if product_search_logs table exists and create it if not
+DROP TABLE IF EXISTS product_search_logs;
+CREATE TABLE product_search_logs (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    search_term VARCHAR(255) NOT NULL,
+    product_ids JSON,
+    session_id VARCHAR(100),
+    user_id INT,
+    user_ip VARCHAR(45),
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    INDEX (search_term),
+    INDEX (user_id),
+    INDEX (created_at)
+);
+
+-- Check if product_visits table exists and create it if not
+DROP TABLE IF EXISTS product_visits;
+CREATE TABLE product_visits (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    product_id INT NOT NULL,
+    user_id INT,
+    session_id VARCHAR(100) NOT NULL,
+    user_ip VARCHAR(45),
+    visit_date DATETIME DEFAULT CURRENT_TIMESTAMP,
+    INDEX (product_id),
+    INDEX (user_id),
+    INDEX (visit_date)
+);
+
+-- Check if analytics_extended table exists and create it if not
+DROP TABLE IF EXISTS analytics_extended;
+CREATE TABLE analytics_extended (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT,
+    vendor_id INT,
+    type VARCHAR(50) NOT NULL,
+    product_id INT,
+    category_id INT,
+    quantity INT DEFAULT 1,
+    session_id VARCHAR(100) NOT NULL,
+    device_type VARCHAR(20),
+    referrer VARCHAR(255),
+    user_ip VARCHAR(45),
+    details JSON,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    INDEX (type),
+    INDEX (product_id),
+    INDEX (user_id),
+    INDEX (vendor_id),
+    INDEX (category_id),
+    INDEX (created_at)
+);
+
+-- Create foreign key relationships
+ALTER TABLE analytics
+ADD CONSTRAINT fk_analytics_product
+FOREIGN KEY (product_id) REFERENCES products(product_id) ON DELETE SET NULL,
+ADD CONSTRAINT fk_analytics_user
+FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE SET NULL;
+
+ALTER TABLE product_visits
+ADD CONSTRAINT fk_visits_product
+FOREIGN KEY (product_id) REFERENCES products(product_id) ON DELETE CASCADE,
+ADD CONSTRAINT fk_visits_user
+FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE SET NULL;
+
+ALTER TABLE analytics_extended
+ADD CONSTRAINT fk_analytics_ext_product
+FOREIGN KEY (product_id) REFERENCES products(product_id) ON DELETE SET NULL,
+ADD CONSTRAINT fk_analytics_ext_user
+FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE SET NULL,
+ADD CONSTRAINT fk_analytics_ext_vendor
+FOREIGN KEY (vendor_id) REFERENCES vendors(vendor_id) ON DELETE SET NULL,
+ADD CONSTRAINT fk_analytics_ext_category
+FOREIGN KEY (category_id) REFERENCES categories(category_id) ON DELETE SET NULL;

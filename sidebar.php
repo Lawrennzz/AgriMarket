@@ -63,16 +63,6 @@ $admin_prefix = $in_admin_dir ? '../' : '';
                 <li class="<?php echo $current_page === 'advanced_reports.php' ? 'active' : ''; ?>">
                     <a href="<?php echo $admin_prefix; ?>admin/advanced_reports.php"><i class="fas fa-chart-line"></i> Advanced Analytics</a>
                 </li>
-                <li class="<?php echo $current_page === 'check_analytics.php' ? 'active' : ''; ?>">
-                    <a href="<?php echo $admin_prefix; ?>admin/check_analytics.php" class="analytics-action">
-                        <i class="fas fa-check-circle"></i> Check Analytics
-                    </a>
-                </li>
-                <li class="<?php echo $current_page === 'seed_analytics_data.php' ? 'active' : ''; ?>">
-                    <a href="<?php echo $admin_prefix; ?>admin/seed_analytics_data.php" class="analytics-action">
-                        <i class="fas fa-database"></i> Seed Analytics
-                    </a>
-                </li>
             </ul>
         </li>
 

@@ -4,11 +4,26 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
-// Include the ProductPage class
+// Include necessary files
+require_once 'includes/config.php';
+require_once 'includes/db_connection.php';
+require_once 'includes/functions.php';
+require_once 'classes/Database.php';
 require_once 'classes/ProductPage.php';
 
-// Create an instance of the ProductPage class
-$productPage = new ProductPage();
+// Get database connection
+$conn = getConnection();
+
+// Get product ID from GET parameter
+if (!isset($_GET['id'])) {
+    header('Location: products.php');
+    exit();
+}
+
+$product_id = (int)$_GET['id'];
+
+// Create an instance of the ProductPage class with the product ID
+$productPage = new ProductPage($product_id);
 
 // Render the product page
 $productPage->render();

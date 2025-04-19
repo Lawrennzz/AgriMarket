@@ -62,7 +62,7 @@ class ProductPage {
                 JOIN vendors v ON p.vendor_id = v.vendor_id 
                 JOIN users u ON v.user_id = u.user_id 
                 JOIN categories c ON p.category_id = c.category_id 
-                WHERE p.product_id = ?";
+                WHERE p.product_id = ? AND p.deleted_at IS NULL";
         $stmt = $this->db->prepare($sql);
         
         if ($stmt === false) {
@@ -79,7 +79,7 @@ class ProductPage {
     private function loadRelatedProducts() {
         // Get related products
         $sql = "SELECT * FROM products 
-                WHERE category_id = ? AND product_id != ? 
+                WHERE category_id = ? AND product_id != ? AND deleted_at IS NULL
                 LIMIT 4";
         $stmt = $this->db->prepare($sql);
         

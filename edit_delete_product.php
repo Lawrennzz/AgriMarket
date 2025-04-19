@@ -19,7 +19,7 @@ if (isset($_GET['id'])) {
     $product_id = intval($_GET['id']);
 
     // Fetch product details
-    $product_query = "SELECT p.*, v.user_id as vendor_user_id FROM products p JOIN vendors v ON p.vendor_id = v.vendor_id WHERE p.product_id = ?";
+    $product_query = "SELECT p.*, v.user_id as vendor_user_id FROM products p JOIN vendors v ON p.vendor_id = v.vendor_id WHERE p.product_id = ? AND p.deleted_at IS NULL";
     $stmt = mysqli_prepare($conn, $product_query);
     mysqli_stmt_bind_param($stmt, "i", $product_id);
     mysqli_stmt_execute($stmt);

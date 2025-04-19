@@ -89,7 +89,7 @@ class Product {
     
     // Load product data from database
     public function loadById($id) {
-        $query = "SELECT * FROM products WHERE product_id = ?";
+        $query = "SELECT * FROM products WHERE product_id = ? AND deleted_at IS NULL";
         $stmt = $this->db->prepare($query);
         
         if ($stmt === false) {
@@ -193,10 +193,11 @@ class Product {
         $db = Database::getInstance();
         $conn = $db->getConnection();
         
-        $query = "SELECT p.*, v.vendor_name, u.name as vendor_user_name
+        $query = "SELECT p.*, v.company_name as vendor_name, u.name as vendor_user_name
                   FROM products p
                   LEFT JOIN vendors v ON p.vendor_id = v.vendor_id
                   LEFT JOIN users u ON v.user_id = u.user_id
+                  WHERE p.deleted_at IS NULL
                   ORDER BY p.created_at DESC";
                   
         if ($limit !== null) {
@@ -251,11 +252,11 @@ class Product {
     public static function getByCategory($category) {
         $db = Database::getInstance();
         
-        $query = "SELECT p.*, v.vendor_name, u.name as vendor_user_name
+        $query = "SELECT p.*, v.company_name as vendor_name, u.name as vendor_user_name
                   FROM products p
                   LEFT JOIN vendors v ON p.vendor_id = v.vendor_id
                   LEFT JOIN users u ON v.user_id = u.user_id
-                  WHERE p.category = ?
+                  WHERE p.category = ? AND p.deleted_at IS NULL
                   ORDER BY p.created_at DESC";
         $stmt = $db->prepare($query);
         
@@ -282,11 +283,11 @@ class Product {
         
         $keyword = '%' . $db->escapeString($keyword) . '%';
         
-        $query = "SELECT p.*, v.vendor_name, u.name as vendor_user_name
+        $query = "SELECT p.*, v.company_name as vendor_name, u.name as vendor_user_name
                   FROM products p
                   LEFT JOIN vendors v ON p.vendor_id = v.vendor_id
                   LEFT JOIN users u ON v.user_id = u.user_id
-                  WHERE p.name LIKE ? OR p.description LIKE ?
+                  WHERE (p.name LIKE ? OR p.description LIKE ?) AND p.deleted_at IS NULL
                   ORDER BY p.created_at DESC";
         $stmt = $db->prepare($query);
         

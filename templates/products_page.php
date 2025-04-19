@@ -455,7 +455,7 @@
                             <h3 class="product-title"><?php echo htmlspecialchars($product['name']); ?></h3>
                             <div class="product-vendor">
                                 <i class="fas fa-store"></i> 
-                                <?php echo htmlspecialchars($product['vendor_name']); ?>
+                                <?php echo htmlspecialchars($product['vendor_name'] ?? 'Unknown Vendor'); ?>
                             </div>
                             <div class="product-price">$<?php echo number_format($product['price'], 2); ?></div>
                             <div class="product-stock">
@@ -468,7 +468,7 @@
                                 <?php endif; ?>
                             </div>
                             <div class="product-actions">
-                                <?php if ($product['vendor_user_id'] == $this->getUserId()): ?>
+                                <?php if (isset($product['vendor_user_id']) && $product['vendor_user_id'] == $this->getUserId()): ?>
                                     <a href="edit_delete_product.php?id=<?php echo $product['product_id']; ?>" class="btn btn-primary">Edit</a>
                                     <a href="compare_products.php?add=<?php echo $product['product_id']; ?>" 
                                        class="view-details" title="Add to Compare">

@@ -13,6 +13,10 @@ class ProductsPage {
     private $view;
     private $products;
     private $categories;
+    private $total_reviews;
+    private $can_review;
+    private $has_reviewed;
+    private $purchase_date;
     
     public function __construct() {
         // Initialize database connection
@@ -52,25 +56,33 @@ class ProductsPage {
     }
     
     private function loadProducts() {
-        // Build the SQL query
-        $sql = "SELECT p.*, u.username as vendor_name, c.name as category_name, v.user_id as vendor_user_id 
+        // Base query to get products
+        $sql = "SELECT p.*, c.name as category_name, v.business_name as vendor_name, v.user_id as vendor_user_id, 
+                (SELECT AVG(rating) FROM reviews WHERE product_id = p.product_id) as avg_rating,
+                (SELECT COUNT(*) FROM reviews WHERE product_id = p.product_id) as review_count
                 FROM products p 
-                JOIN vendors v ON p.vendor_id = v.vendor_id 
-                LEFT JOIN users u ON v.user_id = u.user_id 
-                LEFT JOIN categories c ON p.category_id = c.category_id";
+                LEFT JOIN categories c ON p.category_id = c.category_id
+                LEFT JOIN vendors v ON p.vendor_id = v.vendor_id
+                WHERE p.deleted_at IS NULL";
         
-        // Add where conditions
-        $where_conditions = [];
+        $params = [];
+        $types = "";
+        
+        // Add category filter if category is selected
         if ($this->category_id) {
-            $where_conditions[] = "p.category_id = '{$this->category_id}'";
-        }
-        if ($this->search) {
-            $escaped_search = $this->db->escapeString($this->search);
-            $where_conditions[] = "(p.name LIKE '%{$escaped_search}%' OR p.description LIKE '%{$escaped_search}%')";
+            $sql .= " AND p.category_id = ?";
+            $params[] = $this->category_id;
+            $types .= "i";
         }
         
-        if (!empty($where_conditions)) {
-            $sql .= " WHERE " . implode(" AND ", $where_conditions);
+        // Add search term filter if search is provided
+        if ($this->search) {
+            $search_term = '%' . $this->search . '%';
+            $sql .= " AND (p.name LIKE ? OR p.description LIKE ? OR c.name LIKE ?)";
+            $params[] = $search_term;
+            $params[] = $search_term;
+            $params[] = $search_term;
+            $types .= "sss";
         }
         
         // Add sorting
@@ -84,19 +96,30 @@ class ProductsPage {
             case 'name_desc':
                 $sql .= " ORDER BY p.name DESC";
                 break;
+            case 'name_asc':
             default:
                 $sql .= " ORDER BY p.name ASC";
+                break;
         }
         
-        // Execute query
-        $result = mysqli_query($this->conn, $sql);
+        // Prepare and execute query
+        $stmt = $this->db->prepare($sql);
         
-        // Store products
+        if ($stmt === false) {
+            $this->products = [];
+            return;
+        }
+        
+        if (!empty($params)) {
+            mysqli_stmt_bind_param($stmt, $types, ...$params);
+        }
+        
+        mysqli_stmt_execute($stmt);
+        $result = mysqli_stmt_get_result($stmt);
+        
         $this->products = [];
-        if ($result) {
-            while ($row = mysqli_fetch_assoc($result)) {
-                $this->products[] = $row;
-            }
+        while ($row = mysqli_fetch_assoc($result)) {
+            $this->products[] = $row;
         }
     }
     
@@ -119,20 +142,8 @@ class ProductsPage {
         return $this->categories;
     }
     
-    public function getCategoryId() {
-        return $this->category_id;
-    }
-    
-    public function getSearch() {
-        return htmlspecialchars_decode($this->search);
-    }
-    
-    public function getSort() {
-        return $this->sort;
-    }
-    
-    public function getView() {
-        return $this->view;
+    public function getTotalReviews() {
+        return $this->total_reviews ?? 0;
     }
     
     public function getUserId() {
@@ -141,6 +152,55 @@ class ProductsPage {
     
     public function getRole() {
         return $this->role;
+    }
+    
+    public function canReview() {
+        return $this->can_review ?? false;
+    }
+    
+    public function hasReviewed() {
+        return $this->has_reviewed ?? false;
+    }
+    
+    public function getPurchaseDate() {
+        return $this->purchase_date ?? null;
+    }
+    
+    // Setter methods for search parameters
+    public function setCategoryId($category_id) {
+        $this->category_id = (int)$category_id;
+        return $this;
+    }
+    
+    public function setSearch($search) {
+        $this->search = trim($search);
+        return $this;
+    }
+    
+    public function setSort($sort) {
+        $this->sort = $sort;
+        return $this;
+    }
+    
+    public function setView($view) {
+        $this->view = $view;
+        return $this;
+    }
+    
+    public function getCategoryId() {
+        return $this->category_id;
+    }
+    
+    public function getSearch() {
+        return $this->search;
+    }
+    
+    public function getSort() {
+        return $this->sort;
+    }
+    
+    public function getView() {
+        return $this->view;
     }
     
     public function render() {
