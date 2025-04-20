@@ -70,14 +70,17 @@ CREATE TABLE orders (
     order_id INT AUTO_INCREMENT PRIMARY KEY,
     user_id INT,
     total DECIMAL(10,2) NOT NULL,
+    subtotal DECIMAL(10,2) DEFAULT 0,
+    shipping DECIMAL(10,2) DEFAULT 0,
+    tax DECIMAL(10,2) DEFAULT 0,
     status ENUM('pending', 'processing', 'shipped', 'delivered', 'cancelled') DEFAULT 'pending',
     shipping_address VARCHAR(255) NOT NULL,
     processed_by INT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     payment_status ENUM('pending', 'processing', 'completed', 'failed', 'refunded') DEFAULT 'pending',
-    transaction_id VARCHAR(100) DEFAULT NULL,
     payment_method VARCHAR(50) DEFAULT NULL,
-    deleted_at DATETIME DEFAULT NULL,
+    transaction_id VARCHAR(100) DEFAULT NULL,
+    deleted_at TIMESTAMP NULL,
     FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE SET NULL,
     FOREIGN KEY (processed_by) REFERENCES users(user_id) ON DELETE SET NULL
 );
@@ -89,6 +92,7 @@ CREATE TABLE order_items (
     product_id INT,
     quantity INT NOT NULL,
     price DECIMAL(10,2) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (order_id) REFERENCES orders(order_id) ON DELETE CASCADE,
     FOREIGN KEY (product_id) REFERENCES products(product_id) ON DELETE SET NULL
 );
@@ -135,9 +139,11 @@ CREATE TABLE analytics (
     analytic_id INT AUTO_INCREMENT PRIMARY KEY,
     type ENUM('search', 'visit', 'order') NOT NULL,
     product_id INT,
+    user_id INT,
     count INT DEFAULT 1,
     recorded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (product_id) REFERENCES products(product_id) ON DELETE SET NULL
+    FOREIGN KEY (product_id) REFERENCES products(product_id) ON DELETE SET NULL,
+    FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE SET NULL
 );
 
 -- Wishlist
@@ -640,20 +646,6 @@ CREATE TABLE product_search_logs (
     INDEX (created_at)
 );
 
--- Check if product_visits table exists and create it if not
-DROP TABLE IF EXISTS product_visits;
-CREATE TABLE product_visits (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    product_id INT NOT NULL,
-    user_id INT,
-    session_id VARCHAR(100) NOT NULL,
-    user_ip VARCHAR(45),
-    visit_date DATETIME DEFAULT CURRENT_TIMESTAMP,
-    INDEX (product_id),
-    INDEX (user_id),
-    INDEX (visit_date)
-);
-
 -- Check if analytics_extended table exists and create it if not
 DROP TABLE IF EXISTS analytics_extended;
 CREATE TABLE analytics_extended (
@@ -700,3 +692,38 @@ ADD CONSTRAINT fk_analytics_ext_vendor
 FOREIGN KEY (vendor_id) REFERENCES vendors(vendor_id) ON DELETE SET NULL,
 ADD CONSTRAINT fk_analytics_ext_category
 FOREIGN KEY (category_id) REFERENCES categories(category_id) ON DELETE SET NULL;
+
+-- Create indexes for better performance
+CREATE INDEX idx_orders_created_at ON orders(created_at);
+CREATE INDEX idx_orders_status ON orders(status);
+CREATE INDEX idx_orders_payment_status ON orders(payment_status);
+CREATE INDEX idx_order_items_product ON order_items(product_id);
+CREATE INDEX idx_product_search_logs_created_at ON product_search_logs(created_at);
+CREATE INDEX idx_product_views_created_at ON product_views(created_at);
+CREATE INDEX idx_analytics_type ON analytics(type);
+CREATE INDEX idx_analytics_recorded_at ON analytics(recorded_at);
+
+-- Add triggers for analytics
+DELIMITER //
+
+-- Trigger for product views
+CREATE TRIGGER after_product_view
+AFTER INSERT ON product_views
+FOR EACH ROW
+BEGIN
+    INSERT INTO analytics (type, product_id, user_id, count)
+    VALUES ('visit', NEW.product_id, NEW.user_id, 1)
+    ON DUPLICATE KEY UPDATE count = count + 1;
+END//
+
+-- Trigger for orders
+CREATE TRIGGER after_order_insert
+AFTER INSERT ON order_items
+FOR EACH ROW
+BEGIN
+    INSERT INTO analytics (type, product_id, count)
+    VALUES ('order', NEW.product_id, NEW.quantity)
+    ON DUPLICATE KEY UPDATE count = count + NEW.quantity;
+END//
+
+DELIMITER ;

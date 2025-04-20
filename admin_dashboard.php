@@ -12,44 +12,68 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin' || !isset($_SE
 }
 $_SESSION['last_activity'] = time();
 
+// Function to safely execute queries
+function executeQuery($conn, $query, $params = [], $types = "") {
+    $stmt = mysqli_prepare($conn, $query);
+    if (!$stmt) {
+        error_log("Query preparation failed: " . mysqli_error($conn));
+        error_log("Query was: " . $query);
+        return false;
+    }
+    
+    if (!empty($params) && !empty($types)) {
+        mysqli_stmt_bind_param($stmt, $types, ...$params);
+    }
+    
+    if (!mysqli_stmt_execute($stmt)) {
+        error_log("Query execution failed: " . mysqli_stmt_error($stmt));
+        mysqli_stmt_close($stmt);
+        return false;
+    }
+    
+    $result = mysqli_stmt_get_result($stmt);
+    mysqli_stmt_close($stmt);
+    return $result;
+}
+
 // User count
+$users_count = 0;
 $users_count_query = "SELECT COUNT(*) as count FROM users WHERE deleted_at IS NULL";
-$users_count_stmt = mysqli_prepare($conn, $users_count_query);
-mysqli_stmt_execute($users_count_stmt);
-$users_count = mysqli_fetch_assoc(mysqli_stmt_get_result($users_count_stmt))['count'];
-mysqli_stmt_close($users_count_stmt);
+$result = executeQuery($conn, $users_count_query);
+if ($result) {
+    $users_count = mysqli_fetch_assoc($result)['count'];
+}
 
 // Order count (last 30 days)
+$orders_count = 0;
 $orders_count_query = "SELECT COUNT(*) as count FROM orders WHERE created_at >= NOW() - INTERVAL 30 DAY";
-$orders_count_stmt = mysqli_prepare($conn, $orders_count_query);
-mysqli_stmt_execute($orders_count_stmt);
-$orders_count = mysqli_fetch_assoc(mysqli_stmt_get_result($orders_count_stmt))['count'];
-mysqli_stmt_close($orders_count_stmt);
+$result = executeQuery($conn, $orders_count_query);
+if ($result) {
+    $orders_count = mysqli_fetch_assoc($result)['count'];
+}
 
 // Recent activity (audit logs)
+$activity_result = null;
 $activity_query = "
     SELECT a.*, u.name 
     FROM audit_logs a 
     JOIN users u ON a.user_id = u.user_id 
     ORDER BY a.created_at DESC LIMIT 5";
-$activity_stmt = mysqli_prepare($conn, $activity_query);
-mysqli_stmt_execute($activity_stmt);
-$activity_result = mysqli_stmt_get_result($activity_stmt);
+$activity_result = executeQuery($conn, $activity_query);
 
 // Analytics (last 30 days)
+$data = ['search' => 0, 'visit' => 0, 'order' => 0];
 $analytics_query = "
     SELECT type, SUM(count) as total 
     FROM analytics 
     WHERE recorded_at >= NOW() - INTERVAL 30 DAY 
     GROUP BY type";
-$analytics_stmt = mysqli_prepare($conn, $analytics_query);
-mysqli_stmt_execute($analytics_stmt);
-$analytics_result = mysqli_stmt_get_result($analytics_stmt);
-$data = ['search' => 0, 'visit' => 0, 'order' => 0];
-while ($row = mysqli_fetch_assoc($analytics_result)) {
-    $data[$row['type']] = (int)$row['total'];
+$analytics_result = executeQuery($conn, $analytics_query);
+if ($analytics_result) {
+    while ($row = mysqli_fetch_assoc($analytics_result)) {
+        $data[$row['type']] = (int)$row['total'];
+    }
 }
-mysqli_stmt_close($analytics_stmt);
 
 // Include Mailer class
 require_once 'includes/Mailer.php';
@@ -69,72 +93,69 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['send_notification'])) 
         
         try {
             // Insert notifications in the database
-        $notification_query = "
-            INSERT INTO notifications (user_id, message, type) 
-            SELECT user_id, ?, 'promotion' 
-            FROM users 
-            WHERE role = 'customer'";
-        $notification_stmt = mysqli_prepare($conn, $notification_query);
-        mysqli_stmt_bind_param($notification_stmt, "s", $message);
+            $notification_query = "
+                INSERT INTO notifications (user_id, message, type) 
+                SELECT user_id, ?, 'promotion' 
+                FROM users 
+                WHERE role = 'customer'";
             
-        if (mysqli_stmt_execute($notification_stmt)) {
-                $affected_rows = mysqli_stmt_affected_rows($notification_stmt);
+            $result = executeQuery($conn, $notification_query, [$message], "s");
+            if ($result !== false) {
+                $affected_rows = mysqli_affected_rows($conn);
                 $success_count += $affected_rows;
                 $success = "Notification sent successfully to $affected_rows user(s)!";
-        } else {
+            } else {
                 throw new Exception("Failed to send notification to database: " . mysqli_error($conn));
-        }
-        mysqli_stmt_close($notification_stmt);
+            }
             
             // Send emails if requested
             if ($send_email) {
                 // Get customer emails
                 $customers_query = "SELECT user_id, name, email FROM users WHERE role = 'customer'";
-                $customers_stmt = mysqli_prepare($conn, $customers_query);
-                mysqli_stmt_execute($customers_stmt);
-                $customers_result = mysqli_stmt_get_result($customers_stmt);
+                $customers_result = executeQuery($conn, $customers_query);
                 
-                $mailer = new Mailer();
-                $email_recipients = [];
-                
-                while ($customer = mysqli_fetch_assoc($customers_result)) {
-                    $email_recipients[] = [
-                        'email' => $customer['email'],
-                        'name' => $customer['name']
-                    ];
-                }
-                
-                mysqli_stmt_close($customers_stmt);
-                
-                // Send emails in bulk
-                if (!empty($email_recipients)) {
-                    $email_results = $mailer->sendBulkNotification($email_recipients, $subject, $message);
+                if ($customers_result) {
+                    $mailer = new Mailer();
+                    $email_recipients = [];
                     
-                    $email_success_count = count(array_filter($email_results));
-                    $email_error_count = count($email_results) - $email_success_count;
+                    while ($customer = mysqli_fetch_assoc($customers_result)) {
+                        $email_recipients[] = [
+                            'email' => $customer['email'],
+                            'name' => $customer['name']
+                        ];
+                    }
                     
-                    if ($email_error_count > 0) {
-                        $success .= " However, $email_error_count email(s) could not be sent.";
+                    // Send emails in bulk
+                    if (!empty($email_recipients)) {
+                        $email_results = $mailer->sendBulkNotification($email_recipients, $subject, $message);
                         
-                        // Log errors
-                        foreach ($mailer->getErrors() as $error_msg) {
-                            error_log("Email error: $error_msg");
+                        $email_success_count = count(array_filter($email_results));
+                        $email_error_count = count($email_results) - $email_success_count;
+                        
+                        if ($email_error_count > 0) {
+                            $success .= " However, $email_error_count email(s) could not be sent.";
+                            
+                            // Log errors
+                            foreach ($mailer->getErrors() as $error_msg) {
+                                error_log("Email error: $error_msg");
+                            }
+                        } else {
+                            $success .= " Email notifications sent successfully to $email_success_count recipient(s).";
                         }
-                    } else {
-                        $success .= " Email notifications sent successfully to $email_success_count recipient(s).";
                     }
                 }
             }
 
-        // Log action
-        $audit_query = "INSERT INTO audit_logs (user_id, action, table_name, details) VALUES (?, ?, ?, ?)";
-        $audit_stmt = mysqli_prepare($conn, $audit_query);
-        $action = "send_notification";
-        $table_name = "notifications";
+            // Log action
+            $audit_query = "INSERT INTO audit_logs (user_id, action, table_name, details) VALUES (?, ?, ?, ?)";
+            $action = "send_notification";
+            $table_name = "notifications";
             $details = "Sent promotion: " . $message . ($send_email ? " (with email)" : "");
-        mysqli_stmt_bind_param($audit_stmt, "isss", $_SESSION['user_id'], $action, $table_name, $details);
-        mysqli_stmt_execute($audit_stmt);
-        mysqli_stmt_close($audit_stmt);
+            
+            $result = executeQuery($conn, $audit_query, [$_SESSION['user_id'], $action, $table_name, $details], "isss");
+            if ($result === false) {
+                throw new Exception("Failed to log action: " . mysqli_error($conn));
+            }
             
             mysqli_commit($conn);
         } catch (Exception $e) {

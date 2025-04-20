@@ -202,9 +202,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // Update payment status
                 update_payment_status($order_id, $transaction_id, $payment_status, $payment_method);
                 
+                // Track the order in analytics
+                if (file_exists('includes/track_analytics.php')) {
+                    require_once 'includes/track_analytics.php';
+                    
+                    // Prepare order items data for analytics
+                    $order_items_for_analytics = [];
+                    foreach ($cart_items as $item) {
+                        $order_items_for_analytics[] = [
+                            'product_id' => $item['product_id'],
+                            'vendor_id' => $item['vendor_id'],
+                            'category_id' => $item['category_id'],
+                            'quantity' => $item['quantity'],
+                            'price' => $item['price'],
+                            'name' => $item['name']
+                        ];
+                    }
+                    
+                    // Track the order placement
+                    track_order_placement($order_id, $order_items_for_analytics, $total);
+                }
+                
                 // Clear cart
-                $clear_cart_query = "DELETE FROM cart WHERE user_id = ?";
-                $clear_cart_stmt = mysqli_prepare($conn, $clear_cart_query);
+                $clear_cart_sql = "DELETE FROM cart WHERE user_id = ?";
+                $clear_cart_stmt = mysqli_prepare($conn, $clear_cart_sql);
                 mysqli_stmt_bind_param($clear_cart_stmt, "i", $user_id);
                 mysqli_stmt_execute($clear_cart_stmt);
                 

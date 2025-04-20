@@ -177,20 +177,8 @@ class ProductPage {
             require_once dirname(__DIR__) . '/includes/functions.php';
         }
         
-        // Log product visit to analytics database
+        // Log product visit to analytics database only
         logProductView($this->conn, $this->product_id);
-        
-        // Also log to product_visits table if it exists
-        $sql = "INSERT INTO product_visits (product_id, user_id, session_id, user_ip) 
-                VALUES (?, ?, ?, ?)";
-        $stmt = $this->db->prepare($sql);
-        if ($stmt) {
-            $session_id = session_id() ?: uniqid('sess_');
-            $user_ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
-            mysqli_stmt_bind_param($stmt, "iiss", $this->product_id, $this->user_id, $session_id, $user_ip);
-            mysqli_stmt_execute($stmt);
-            mysqli_stmt_close($stmt);
-        }
     }
     
     public function getProduct() {

@@ -202,7 +202,7 @@ function ensure_analytics_tables($conn) {
     // Check if product_search_logs table exists
     $check_search = mysqli_query($conn, "SHOW TABLES LIKE 'product_search_logs'");
     if (mysqli_num_rows($check_search) == 0) {
-        // Create the search logs table
+        // Create the product search logs table
         $create_search = "CREATE TABLE product_search_logs (
             id INT AUTO_INCREMENT PRIMARY KEY,
             search_term VARCHAR(255) NOT NULL,
@@ -251,12 +251,33 @@ function ensure_analytics_tables($conn) {
  * @return bool Success status
  */
 function track_product_view($product_id, $product_data = []) {
+    $conn = getConnection();
+    
+    // Track in detailed analytics
     $data = [
         'product_id' => $product_id,
         'vendor_id' => $product_data['vendor_id'] ?? null,
         'category_id' => $product_data['category_id'] ?? null,
         'details' => $product_data
     ];
+    
+    // Record in product_visits for specific view tracking
+    $user_id = isset($_SESSION['user_id']) ? $_SESSION['user_id'] : null;
+    $session_id = session_id() ?: uniqid('sess_');
+    $user_ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+    
+    ensure_analytics_tables($conn);
+    
+    $query = "INSERT INTO product_visits 
+              (product_id, user_id, session_id, user_ip, visit_date) 
+              VALUES (?, ?, ?, ?, NOW())";
+    
+    $stmt = mysqli_prepare($conn, $query);
+    if ($stmt) {
+        mysqli_stmt_bind_param($stmt, "iiss", $product_id, $user_id, $session_id, $user_ip);
+        mysqli_stmt_execute($stmt);
+        mysqli_stmt_close($stmt);
+    }
     
     return track_activity('visit', $data);
 }
@@ -320,10 +341,11 @@ function track_product_search($search_query, $category_id = null, $results_data 
     
     // For each product in the search results, record an impression
     if (!empty($product_ids)) {
-        foreach ($product_ids as $pid) {
+        foreach ($results_data as $product) {
             $product_data = [
-                'product_id' => $pid,
-                'category_id' => $category_id,
+                'product_id' => $product['product_id'],
+                'vendor_id' => $product['vendor_id'] ?? null,
+                'category_id' => $product['category_id'] ?? null,
                 'details' => [
                     'source' => 'search',
                     'query' => $search_query
@@ -350,11 +372,11 @@ function track_order_placement($order_id, $order_items = [], $total_amount = 0) 
             'product_id' => $item['product_id'],
             'vendor_id' => $item['vendor_id'] ?? null,
             'category_id' => $item['category_id'] ?? null,
-            'quantity' => $item['quantity'],
+            'quantity' => $item['quantity'] ?? 1,
             'details' => [
                 'order_id' => $order_id,
-                'price' => $item['price'],
-                'subtotal' => $item['quantity'] * $item['price'],
+                'price' => $item['price'] ?? 0,
+                'subtotal' => ($item['quantity'] ?? 1) * ($item['price'] ?? 0),
                 'total_order_amount' => $total_amount
             ]
         ];

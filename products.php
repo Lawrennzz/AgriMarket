@@ -46,5 +46,5 @@ if (isset($_GET['view'])) {
     $productsPage->setView($_GET['view']);
 }
 
-// Render the products page
+// Render the products page (analytics tracking happens inside the render method)
 $productsPage->render();

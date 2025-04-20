@@ -5,64 +5,82 @@ require_once '../includes/db_connection.php';
 require_once '../includes/functions.php';
 require_once '../includes/track_analytics.php';
 
-// Check if user is logged in and is admin
-if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin' || !isset($_SESSION['last_activity']) || (time() - $_SESSION['last_activity']) > 3600) {
-    session_unset();
-    session_destroy();
+// Check admin permissions
+if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
     header("Location: ../login.php");
     exit();
 }
-$_SESSION['last_activity'] = time();
 
 $conn = getConnection();
 $message = '';
-$status = '';
+$message_type = '';
+$token = md5(uniqid(rand(), true));
+$_SESSION['csrf_token'] = $token;
+
+// Get current row counts
+function getAnalyticsCounts($conn) {
+    $tables = [
+        'analytics' => 'Analytics',
+        'analytics_extended' => 'Extended Analytics',
+        'product_search_logs' => 'Search Logs',
+        'product_visits' => 'Product Visits'
+    ];
+    
+    $counts = [];
+    
+    foreach ($tables as $table => $label) {
+        $query = "SELECT COUNT(*) as count FROM $table";
+        $result = mysqli_query($conn, $query);
+        
+        if ($result) {
+            $row = mysqli_fetch_assoc($result);
+            $counts[$table] = [
+                'label' => $label,
+                'count' => $row['count']
+            ];
+        } else {
+            $counts[$table] = [
+                'label' => $label,
+                'count' => 'Error querying table'
+            ];
+        }
+    }
+    
+    return $counts;
+}
 
 // Handle form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    // Validate the form token to prevent CSRF
-    if (!isset($_POST['token']) || $_POST['token'] !== $_SESSION['token']) {
-        $message = "Security validation failed. Please try again.";
-        $status = 'error';
+    // Verify CSRF token
+    if (!isset($_POST['csrf_token']) || $_POST['csrf_token'] !== $_SESSION['csrf_token']) {
+        $message = "Security token mismatch. Please try again.";
+        $message_type = "error";
     } else {
-        $table = isset($_POST['table']) ? $_POST['table'] : 'all';
-        $confirmation = isset($_POST['confirmation']) ? $_POST['confirmation'] : '';
-        
-        if ($confirmation !== 'DELETE') {
-            $message = "Please type DELETE in the confirmation field to proceed.";
-            $status = 'error';
+        // Confirm deletion with checkbox
+        if (!isset($_POST['confirm_delete']) || $_POST['confirm_delete'] !== 'yes') {
+            $message = "You must confirm the deletion by checking the confirmation box.";
+            $message_type = "error";
         } else {
-            // Call the purge function from track_analytics.php
-            $success = purge_analytics_data($table);
+            // All checks passed, purge the data
+            $purge_result = purge_analytics_data('all');
             
-            if ($success) {
-                $message = "Successfully purged analytics data for " . ($table === 'all' ? 'all tables' : "table '$table'");
-                $status = 'success';
+            if ($purge_result) {
+                $message = "Successfully purged all analytics data.";
+                $message_type = "success";
             } else {
-                $message = "An error occurred while purging data. Check server logs for details.";
-                $status = 'error';
+                $message = "Error purging analytics data. Check server logs for details.";
+                $message_type = "error";
             }
         }
     }
-}
-
-// Generate a token for CSRF protection
-$_SESSION['token'] = bin2hex(random_bytes(32));
-
-// Get table row counts
-$tables = ['analytics', 'analytics_extended', 'product_search_logs', 'product_visits'];
-$counts = [];
-
-foreach ($tables as $table) {
-    $query = "SELECT COUNT(*) as count FROM $table";
-    $result = mysqli_query($conn, $query);
     
-    if ($result && $row = mysqli_fetch_assoc($result)) {
-        $counts[$table] = $row['count'];
-    } else {
-        $counts[$table] = 'Table not found';
-    }
+    // Regenerate token after form submission
+    $token = md5(uniqid(rand(), true));
+    $_SESSION['csrf_token'] = $token;
 }
+
+// Get current row counts
+$analytics_counts = getAnalyticsCounts($conn);
 ?>
 
 <!DOCTYPE html>
@@ -86,23 +104,6 @@ foreach ($tables as $table) {
             padding: 20px;
         }
         
-        .page-header {
-            background-color: white;
-            padding: 20px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-        }
-        
-        .page-header h1 {
-            margin: 0;
-            font-size: 1.8rem;
-            color: #333;
-        }
-        
         .card {
             background-color: white;
             border-radius: 8px;
@@ -111,94 +112,79 @@ foreach ($tables as $table) {
             margin-bottom: 20px;
         }
         
-        .card h2 {
+        .alert {
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
+        
+        .alert-success {
+            background-color: #d4edda;
+            border-color: #c3e6cb;
+            color: #155724;
+        }
+        
+        .alert-error {
+            background-color: #f8d7da;
+            border-color: #f5c6cb;
+            color: #721c24;
+        }
+        
+        h1, h2 {
             color: #333;
-            margin-top: 0;
-            font-size: 1.5rem;
-            padding-bottom: 10px;
-            border-bottom: 1px solid #eee;
         }
         
         .warning-box {
             background-color: #fff3cd;
-            color: #856404;
             border: 1px solid #ffeeba;
+            color: #856404;
             padding: 15px;
-            border-radius: 5px;
+            border-radius: 4px;
             margin-bottom: 20px;
         }
         
-        .success-box {
-            background-color: #d4edda;
-            color: #155724;
-            border: 1px solid #c3e6cb;
-            padding: 15px;
-            border-radius: 5px;
-            margin-bottom: 20px;
+        .warning-box h3 {
+            margin-top: 0;
         }
         
-        .error-box {
-            background-color: #f8d7da;
-            color: #721c24;
-            border: 1px solid #f5c6cb;
-            padding: 15px;
-            border-radius: 5px;
-            margin-bottom: 20px;
-        }
-        
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-bottom: 20px;
-        }
-        
-        table, th, td {
-            border: 1px solid #ddd;
-        }
-        
-        th, td {
-            padding: 12px;
-            text-align: left;
-        }
-        
-        th {
-            background-color: #f2f2f2;
-        }
-        
-        form {
+        .confirmation-form {
             margin-top: 20px;
         }
         
-        .form-group {
+        .confirmation-checkbox {
             margin-bottom: 15px;
         }
         
-        label {
-            display: block;
-            margin-bottom: 5px;
-            font-weight: bold;
-        }
-        
-        select, input[type="text"] {
-            width: 100%;
-            padding: 10px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            font-size: 1rem;
-        }
-        
-        button {
+        button.danger {
             background-color: #dc3545;
             color: white;
             border: none;
             padding: 10px 15px;
             border-radius: 4px;
             cursor: pointer;
-            font-size: 1rem;
+            font-weight: bold;
         }
         
-        button:hover {
+        button.danger:hover {
             background-color: #c82333;
+        }
+        
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+        }
+        
+        .data-table th,
+        .data-table td {
+            padding: 10px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        
+        .data-table th {
+            background-color: #f7f7f7;
+            font-weight: bold;
         }
     </style>
 </head>
@@ -206,39 +192,31 @@ foreach ($tables as $table) {
     <?php include '../sidebar.php'; ?>
     
     <div class="content">
-        <div class="page-header">
-            <h1>Clean Analytics Data</h1>
-        </div>
+        <h1>Clean Analytics Data</h1>
+        
+        <?php if (!empty($message)): ?>
+            <div class="alert alert-<?php echo $message_type; ?>">
+                <?php echo $message; ?>
+            </div>
+        <?php endif; ?>
         
         <div class="card">
             <h2>Current Analytics Data</h2>
-            
-            <table>
-                <tr>
-                    <th>Table</th>
-                    <th>Record Count</th>
-                    <th>Description</th>
-                </tr>
-                <tr>
-                    <td>analytics</td>
-                    <td><?php echo $counts['analytics']; ?></td>
-                    <td>Primary analytics table tracking page views, searches, and orders</td>
-                </tr>
-                <tr>
-                    <td>analytics_extended</td>
-                    <td><?php echo $counts['analytics_extended']; ?></td>
-                    <td>Enhanced analytics with more detailed user activity tracking</td>
-                </tr>
-                <tr>
-                    <td>product_search_logs</td>
-                    <td><?php echo $counts['product_search_logs']; ?></td>
-                    <td>Records of search terms and the products found in those searches</td>
-                </tr>
-                <tr>
-                    <td>product_visits</td>
-                    <td><?php echo $counts['product_visits']; ?></td>
-                    <td>Individual product page visit records</td>
-                </tr>
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Data Type</th>
+                        <th>Number of Records</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($analytics_counts as $table => $data): ?>
+                        <tr>
+                            <td><?php echo $data['label']; ?></td>
+                            <td><?php echo $data['count']; ?></td>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
             </table>
         </div>
         
@@ -246,59 +224,31 @@ foreach ($tables as $table) {
             <h2>Purge Analytics Data</h2>
             
             <div class="warning-box">
-                <h3><i class="fas fa-exclamation-triangle"></i> Warning: Destructive Action</h3>
-                <p>Purging analytics data is <strong>permanent</strong> and cannot be undone. This action will delete all collected analytics data, including:</p>
+                <h3><i class="fas fa-exclamation-triangle"></i> Warning</h3>
+                <p>This action will permanently delete <strong>ALL</strong> analytics data from the system. This includes:</p>
                 <ul>
-                    <li>Product search history</li>
-                    <li>Page visit records</li>
-                    <li>Order analytics</li>
-                    <li>User activity tracking</li>
+                    <li>Product view records</li>
+                    <li>Search logs</li>
+                    <li>Order tracking data</li>
+                    <li>All analytics data for reporting</li>
                 </ul>
-                <p>Only proceed if you want to start fresh with analytics collection.</p>
+                <p><strong>This action cannot be undone!</strong> Make sure you have a backup if you need to preserve this data.</p>
             </div>
             
-            <?php if (!empty($message)): ?>
-                <div class="<?php echo $status === 'success' ? 'success-box' : 'error-box'; ?>">
-                    <p><?php echo $message; ?></p>
-                </div>
-            <?php endif; ?>
-            
-            <form method="POST" action="clean_analytics.php" onsubmit="return confirm('Are you absolutely sure you want to delete this analytics data? This action CANNOT be undone.');">
-                <input type="hidden" name="token" value="<?php echo $_SESSION['token']; ?>">
+            <form class="confirmation-form" method="POST" action="clean_analytics.php">
+                <input type="hidden" name="csrf_token" value="<?php echo $token; ?>">
                 
-                <div class="form-group">
-                    <label for="table">Select Table to Purge:</label>
-                    <select name="table" id="table">
-                        <option value="all">All Analytics Tables</option>
-                        <option value="analytics">analytics</option>
-                        <option value="analytics_extended">analytics_extended</option>
-                        <option value="product_search_logs">product_search_logs</option>
-                        <option value="product_visits">product_visits</option>
-                    </select>
+                <div class="confirmation-checkbox">
+                    <label>
+                        <input type="checkbox" name="confirm_delete" value="yes"> 
+                        I understand that this action is irreversible and will delete all analytics data.
+                    </label>
                 </div>
                 
-                <div class="form-group">
-                    <label for="confirmation">Type DELETE to confirm:</label>
-                    <input type="text" name="confirmation" id="confirmation" placeholder="Type DELETE here" required>
-                </div>
-                
-                <button type="submit">Purge Data</button>
+                <button type="submit" class="danger">
+                    <i class="fas fa-trash-alt"></i> Purge All Analytics Data
+                </button>
             </form>
-        </div>
-        
-        <div class="card">
-            <h2>What Happens Next?</h2>
-            
-            <p>After purging the data:</p>
-            <ol>
-                <li>All analytics reports will show no data until new user activity is collected.</li>
-                <li>New analytics data will start being collected immediately as users search for products, view product pages, and place orders.</li>
-                <li>Reports will gradually populate with real user data rather than sample/test data.</li>
-            </ol>
-            
-            <p>For best results, encourage real user activity on your site or wait for organic traffic to generate authentic analytics data.</p>
-            
-            <p><a href="reports.php" style="color: #007bff;">Return to Analytics Reports</a></p>
         </div>
     </div>
 </body>

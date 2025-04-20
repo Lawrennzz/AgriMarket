@@ -371,6 +371,40 @@ function logProductView($conn, $product_id) {
 }
 
 /**
+ * Log a vendor search to the analytics table
+ * 
+ * @param object $conn Database connection
+ * @param int $vendor_id Vendor ID being searched
+ * @return bool Whether the logging was successful
+ */
+function logVendorSearch($conn, $vendor_id) {
+    // Generate a session ID if one doesn't exist
+    if (!isset($_SESSION['analytics_session_id'])) {
+        $_SESSION['analytics_session_id'] = session_id() ?: uniqid('sess_');
+    }
+    
+    $session_id = $_SESSION['analytics_session_id'];
+    $user_id = isset($_SESSION['user_id']) ? $_SESSION['user_id'] : null;
+    $user_ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+    
+    $sql = "INSERT INTO vendor_search_logs 
+            (vendor_id, session_id, user_id, user_ip, created_at) 
+            VALUES (?, ?, ?, ?, NOW())";
+    
+    $stmt = mysqli_prepare($conn, $sql);
+    if (!$stmt) {
+        error_log("Failed to prepare vendor search log query: " . mysqli_error($conn));
+        return false;
+    }
+    
+    mysqli_stmt_bind_param($stmt, "isis", $vendor_id, $session_id, $user_id, $user_ip);
+    $result = mysqli_stmt_execute($stmt);
+    mysqli_stmt_close($stmt);
+    
+    return $result;
+}
+
+/**
  * Log an analytic event to the analytics table
  * 
  * @param object $conn Database connection
@@ -458,25 +492,6 @@ function createAnalyticsTables($conn) {
             )
         ";
         mysqli_query($conn, $create_search_logs_table);
-    }
-    
-    // Check if product_visits table exists, if not create it
-    $visits_table_check = mysqli_query($conn, "SHOW TABLES LIKE 'product_visits'");
-    if (mysqli_num_rows($visits_table_check) == 0) {
-        $create_visits_table = "
-            CREATE TABLE product_visits (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                product_id INT NOT NULL,
-                user_id INT,
-                session_id VARCHAR(100),
-                visit_date DATETIME DEFAULT CURRENT_TIMESTAMP,
-                user_ip VARCHAR(45),
-                INDEX (product_id),
-                INDEX (user_id),
-                INDEX (visit_date)
-            )
-        ";
-        mysqli_query($conn, $create_visits_table);
     }
 }
 ?> 

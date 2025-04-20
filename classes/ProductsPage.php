@@ -204,6 +204,34 @@ class ProductsPage {
     }
     
     public function render() {
-        include 'templates/products_page.php';
+        // Load products if not already loaded
+        if (empty($this->products)) {
+            $this->loadProducts();
+        }
+        
+        // Track search analytics if search term was provided using the new tracking system
+        if ($this->search) {
+            // First check if the track_analytics file exists and include it
+            if (file_exists(dirname(__DIR__) . '/includes/track_analytics.php')) {
+                require_once dirname(__DIR__) . '/includes/track_analytics.php';
+                
+                // Format products data for analytics tracking
+                $search_results = [];
+                foreach ($this->products as $product) {
+                    $search_results[] = [
+                        'product_id' => $product['product_id'],
+                        'name' => $product['name'],
+                        'vendor_id' => $product['vendor_id'],
+                        'category_id' => $product['category_id']
+                    ];
+                }
+                
+                // Track the search
+                track_product_search($this->search, $this->category_id, $search_results);
+            }
+        }
+        
+        // Include the products template to render the page
+        include dirname(__DIR__) . '/templates/products_page.php';
     }
 } 
