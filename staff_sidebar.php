@@ -91,12 +91,6 @@ $base_path = $in_admin_dir ? '../' : '';
                         <span>View Orders</span>
                     </a>
                 </li>
-                <li class="<?php echo ($current_page == 'order_details.php') ? 'active' : ''; ?>">
-                    <a href="order_details.php">
-                        <i class="fas fa-receipt"></i>
-                        <span>Order Details</span>
-                    </a>
-                </li>
             </ul>
         </li>
         

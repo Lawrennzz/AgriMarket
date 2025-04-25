@@ -29,6 +29,19 @@ CREATE TABLE vendors (
     FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
 );
 
+-- Subscription tier limits
+CREATE TABLE subscription_tier_limits (
+    tier ENUM('basic', 'premium', 'enterprise') PRIMARY KEY,
+    product_limit INT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Insert default tier limits
+INSERT INTO subscription_tier_limits (tier, product_limit) VALUES
+('basic', 10),
+('premium', 50),
+('enterprise', 1000);
+
 -- Categories
 CREATE TABLE categories (
     category_id INT AUTO_INCREMENT PRIMARY KEY,

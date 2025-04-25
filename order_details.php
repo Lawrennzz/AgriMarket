@@ -1,7 +1,9 @@
 <?php
 include 'config.php';
 
+// Check if user is logged in and has necessary permissions
 if (!isset($_SESSION['user_id']) || !isset($_GET['id'])) {
+    $_SESSION['error_message'] = "Please log in to view order details.";
     header("Location: login.php");
     exit();
 }
@@ -9,6 +11,13 @@ if (!isset($_SESSION['user_id']) || !isset($_GET['id'])) {
 $user_id = $_SESSION['user_id'];
 $role = $_SESSION['role'] ?? 'customer'; // Default to customer if role is unset
 $order_id = intval($_GET['id']);
+
+// Verify user has permission to access orders
+if (!in_array($role, ['customer', 'vendor', 'staff', 'admin'])) {
+    $_SESSION['error_message'] = "You don't have permission to view order details.";
+    header("Location: dashboard.php");
+    exit();
+}
 
 // Handle reorder action
 if (isset($_POST['reorder']) && $role === 'customer') {
@@ -86,7 +95,7 @@ try {
         $vendor_result = mysqli_stmt_get_result($vendor_stmt);
         if (!$vendor_row = mysqli_fetch_assoc($vendor_result)) {
             $_SESSION['error_message'] = "Vendor profile not found.";
-            header("Location: orders.php");
+            header("Location: dashboard.php");
             exit();
         }
         $vendor_id = $vendor_row['vendor_id'];
@@ -108,10 +117,24 @@ try {
             throw new Exception("Order query prepare failed: " . mysqli_error($conn));
         }
         mysqli_stmt_bind_param($stmt, "ii", $order_id, $vendor_id);
+    } elseif ($role === 'staff' || $role === 'admin') {
+        // Staff/Admin can view all orders with full details
+        $order_query = "
+            SELECT o.*, u.name as customer_name, u.email as customer_email, u.phone_number as customer_phone
+            FROM orders o
+            JOIN users u ON o.user_id = u.user_id
+            WHERE o.order_id = ?";
+        $stmt = mysqli_prepare($conn, $order_query);
+        if (!$stmt) {
+            throw new Exception("Order query prepare failed: " . mysqli_error($conn));
+        }
+        mysqli_stmt_bind_param($stmt, "i", $order_id);
     } else {
         // Customer order query
         $order_query = "
-            SELECT o.* FROM orders o
+            SELECT o.*, u.name as customer_name, u.email as customer_email, u.phone_number as customer_phone 
+            FROM orders o
+            JOIN users u ON o.user_id = u.user_id
             WHERE o.order_id = ? AND o.user_id = ?";
         $stmt = mysqli_prepare($conn, $order_query);
         if (!$stmt) {
@@ -120,20 +143,22 @@ try {
         mysqli_stmt_bind_param($stmt, "ii", $order_id, $user_id);
     }
 
-    mysqli_stmt_execute($stmt);
+    if (!mysqli_stmt_execute($stmt)) {
+        throw new Exception("Failed to execute order query: " . mysqli_error($conn));
+    }
     $result = mysqli_stmt_get_result($stmt);
     $order = mysqli_fetch_assoc($result);
     mysqli_stmt_close($stmt);
 
     if (!$order) {
-        $_SESSION['error_message'] = "Order not found or you lack permission to view it.";
-        header("Location: orders.php");
+        $_SESSION['error_message'] = "Order not found or you don't have permission to view it.";
+        header("Location: " . ($role === 'staff' || $role === 'admin' ? 'manage_orders.php' : 'orders.php'));
         exit();
     }
 } catch (Exception $e) {
     error_log("Order details error: " . $e->getMessage());
     $_SESSION['error_message'] = "Failed to load order details. Please try again.";
-    header("Location: orders.php");
+    header("Location: " . ($role === 'staff' || $role === 'admin' ? 'manage_orders.php' : 'orders.php'));
     exit();
 }
 

@@ -109,6 +109,18 @@ if ($role === 'admin') {
             background: #e9ecef;
             border-radius: var(--border-radius);
         }
+        .subscription-info {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+        .subscription-info p {
+            margin: 0;
+            padding: 0.75rem;
+            background: #f8f9fa;
+            border-radius: var(--border-radius);
+            flex-grow: 1;
+        }
     </style>
 </head>
 <body>
@@ -181,16 +193,15 @@ if ($role === 'admin') {
                                value="<?php echo htmlspecialchars($vendor['business_name'] ?? ''); ?>" 
                                <?php echo $vendor ? 'required' : ''; ?>>
                     </div>
-                    <div class="form-group">
-                        <label for="subscription_tier" class="form-label">Subscription Tier<?php echo $vendor ? '*' : ''; ?></label>
-                        <select name="subscription_tier" id="subscription_tier" class="form-control" 
-                                <?php echo $vendor ? 'required' : ''; ?>>
-                            <option value="">Select tier</option>
-                            <option value="basic" <?php echo ($vendor && $vendor['subscription_tier'] === 'basic') ? 'selected' : ''; ?>>Basic</option>
-                            <option value="premium" <?php echo ($vendor && $vendor['subscription_tier'] === 'premium') ? 'selected' : ''; ?>>Premium</option>
-                            <option value="enterprise" <?php echo ($vendor && $vendor['subscription_tier'] === 'enterprise') ? 'selected' : ''; ?>>Enterprise</option>
-                        </select>
-                    </div>
+                    <?php if ($vendor): ?>
+                        <div class="form-group">
+                            <label class="form-label">Current Subscription Tier</label>
+                            <div class="subscription-info">
+                                <p><?php echo ucfirst($vendor['subscription_tier']); ?></p>
+                                <a href="subscription_upgrade.php" class="btn btn-secondary">Request Tier Change</a>
+                            </div>
+                        </div>
+                    <?php endif; ?>
                 <?php endif; ?>
 
                 <?php if ($role === 'admin'): ?>
@@ -261,15 +272,9 @@ if ($role === 'admin') {
 
             <?php if ($role === 'vendor'): ?>
                 const businessName = document.getElementById('business_name').value.trim();
-                const subscriptionTier = document.getElementById('subscription_tier').value;
                 if (businessName && businessName.length < 3) {
                     e.preventDefault();
                     alert('Business name must be at least 3 characters long.');
-                    return;
-                }
-                if (businessName && !subscriptionTier) {
-                    e.preventDefault();
-                    alert('Please select a subscription tier.');
                     return;
                 }
             <?php endif; ?>

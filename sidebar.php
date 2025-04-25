@@ -20,6 +20,24 @@ $admin_prefix = $in_admin_dir ? '../' : '';
         <li class="<?php echo $current_page === 'admin_dashboard.php' ? 'active' : ''; ?>">
             <a href="<?php echo $admin_prefix; ?>admin_dashboard.php"><i class="fas fa-tachometer-alt"></i> Dashboard</a>
         </li>
+        
+        <!-- Subscription Management Section -->
+        <li class="sidebar-dropdown <?php echo in_array($current_page, ['subscription_requests.php', 'manage_tiers.php']) ? 'active' : ''; ?>">
+            <a href="#"><i class="fas fa-crown"></i> Subscriptions</a>
+            <ul class="sidebar-submenu" style="display: <?php echo in_array($current_page, ['subscription_requests.php', 'manage_tiers.php']) ? 'block' : 'none'; ?>;">
+                <li class="<?php echo $current_page === 'subscription_requests.php' ? 'active' : ''; ?>">
+                    <a href="<?php echo $admin_prefix; ?>admin/subscription_requests.php">
+                        <i class="fas fa-sync-alt"></i> Subscription Requests
+                    </a>
+                </li>
+                <li class="<?php echo $current_page === 'manage_tiers.php' ? 'active' : ''; ?>">
+                    <a href="<?php echo $admin_prefix; ?>admin/manage_tiers.php">
+                        <i class="fas fa-layer-group"></i> Manage Tiers
+                    </a>
+                </li>
+            </ul>
+        </li>
+
         <li class="<?php echo $current_page === 'manage_users.php' ? 'active' : ''; ?>">
             <a href="<?php echo $admin_prefix; ?>manage_users.php"><i class="fas fa-users"></i> Manage Users</a>
         </li>

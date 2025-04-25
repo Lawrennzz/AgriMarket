@@ -11,7 +11,7 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
 
 // Get date range for reports
 $start_date = isset($_GET['start_date']) ? $_GET['start_date'] : date('Y-m-d', strtotime('-30 days'));
-$end_date = isset($_GET['end_date']) ? $_GET['end_date'] : date('Y-m-d');
+        $end_date = isset($_GET['end_date']) ? $_GET['end_date'] : date('Y-m-d');
 
 // Initialize arrays for results
 $mostSearchedProducts = [];
@@ -34,7 +34,7 @@ function executeQuery($conn, $query, $types, $params) {
     if (!$stmt->execute()) {
         error_log("Query execution failed: " . $stmt->error);
         $stmt->close();
-        return [];
+    return [];
     }
     
     $result = $stmt->get_result();
@@ -185,16 +185,16 @@ error_log("Ordered Products Count: " . count($most_ordered));
                         <label for="end_date" class="form-label">End Date</label>
                         <input type="date" class="form-control date-input" id="end_date" name="end_date" 
                                value="<?php echo $end_date; ?>">
-                    </div>
+                </div>
                     <div class="col-md-4">
                         <button type="submit" class="btn btn-primary">
                             <i class="fas fa-filter me-2"></i>Apply Filter
                         </button>
-                    </div>
-                </form>
+                </div>
+            </form>
             </div>
         </div>
-
+        
         <!-- Most Searched Products -->
         <div class="card">
             <div class="card-header">
@@ -221,7 +221,7 @@ error_log("Ordered Products Count: " . count($most_ordered));
                                     <td><?php echo $product['search_count']; ?></td>
                                     <td><?php echo htmlspecialchars($product['search_terms']); ?></td>
                                 </tr>
-                                <?php endforeach; ?>
+                            <?php endforeach; ?>
                             <?php else: ?>
                                 <tr>
                                     <td colspan="3" class="text-center">No search data available for the selected period.</td>
@@ -232,7 +232,7 @@ error_log("Ordered Products Count: " . count($most_ordered));
                 </div>
             </div>
         </div>
-
+        
         <!-- Most Viewed Products -->
         <div class="card">
             <div class="card-header">
@@ -257,7 +257,7 @@ error_log("Ordered Products Count: " . count($most_ordered));
                                     <td><?php echo htmlspecialchars($product['name']); ?></td>
                                     <td><?php echo $product['view_count']; ?></td>
                                 </tr>
-                                <?php endforeach; ?>
+                            <?php endforeach; ?>
                             <?php else: ?>
                                 <tr>
                                     <td colspan="2" class="text-center">No view data available for the selected period.</td>
@@ -267,8 +267,8 @@ error_log("Ordered Products Count: " . count($most_ordered));
                     </table>
                 </div>
             </div>
-        </div>
-
+            </div>
+            
         <!-- Most Ordered Products -->
         <div class="card">
             <div class="card-header">
@@ -293,7 +293,7 @@ error_log("Ordered Products Count: " . count($most_ordered));
                                     <td><?php echo htmlspecialchars($product['name']); ?></td>
                                     <td><?php echo $product['order_count']; ?></td>
                                 </tr>
-                                <?php endforeach; ?>
+                            <?php endforeach; ?>
                             <?php else: ?>
                                 <tr>
                                     <td colspan="2" class="text-center">No order data available for the selected period.</td>
@@ -305,7 +305,7 @@ error_log("Ordered Products Count: " . count($most_ordered));
             </div>
         </div>
     </div>
-
+    
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html> 

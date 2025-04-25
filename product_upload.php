@@ -37,92 +37,156 @@ $vendor_id = null;
     }
 mysqli_stmt_close($vendor_stmt);
 
+// Get vendor's subscription tier and product limit
+$limit_query = "SELECT v.subscription_tier, stl.product_limit,
+               (SELECT COUNT(*) FROM products p WHERE p.vendor_id = v.vendor_id AND p.deleted_at IS NULL) as current_products
+               FROM vendors v 
+               JOIN subscription_tier_limits stl ON v.subscription_tier = stl.tier
+               WHERE v.vendor_id = ?";
+$limit_stmt = mysqli_prepare($conn, $limit_query);
+
+if ($limit_stmt === false) {
+    // If table doesn't exist, use default values
+    $limit_data = [
+        'subscription_tier' => 'basic',
+        'product_limit' => 10,
+        'current_products' => 0
+    ];
+    $error_message = "Subscription tier limits not configured. Using default values. Please contact administrator.";
+} else {
+    mysqli_stmt_bind_param($limit_stmt, "i", $vendor_id);
+    mysqli_stmt_execute($limit_stmt);
+    $limit_result = mysqli_stmt_get_result($limit_stmt);
+    $limit_data = mysqli_fetch_assoc($limit_result);
+    mysqli_stmt_close($limit_stmt);
+}
+
 // Handle single product upload
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['upload_type']) && $_POST['upload_type'] === 'single') {
-    $name = mysqli_real_escape_string($conn, $_POST['name']);
-    $description = mysqli_real_escape_string($conn, $_POST['description']);
-    $price = floatval($_POST['price']);
-    $stock = intval($_POST['stock']);
-    $category_id = intval($_POST['category_id']);
-    $packaging = mysqli_real_escape_string($conn, $_POST['packaging'] ?? ''); // Added packaging field
-
-    // Validate inputs
-    if (empty($error_message)) {
-        if (empty($name)) {
-            $error_message = "Product name is required.";
-        } elseif (empty($description)) {
-            $error_message = "Description is required.";
-        } elseif ($price <= 0) {
-            $error_message = "Price must be greater than 0.";
-        } elseif ($stock < 0) {
-            $error_message = "Stock cannot be negative.";
-        } elseif ($category_id <= 0) {
-            $error_message = "Please select a valid category.";
-        }
+    // Check subscription tier limit
+    $check_limit_query = "SELECT v.subscription_tier, stl.product_limit,
+                         (SELECT COUNT(*) FROM products p WHERE p.vendor_id = v.vendor_id AND p.deleted_at IS NULL) as current_products
+                         FROM vendors v 
+                         JOIN subscription_tier_limits stl ON v.subscription_tier = stl.tier
+                         WHERE v.vendor_id = ?";
+    $check_limit_stmt = mysqli_prepare($conn, $check_limit_query);
+    
+    if ($check_limit_stmt === false) {
+        $error_message = "Database error: " . mysqli_error($conn);
+    } else {
+        mysqli_stmt_bind_param($check_limit_stmt, "i", $vendor_id);
+        mysqli_stmt_execute($check_limit_stmt);
+        $limit_result = mysqli_stmt_get_result($check_limit_stmt);
+        $limit_data = mysqli_fetch_assoc($limit_result);
+        mysqli_stmt_close($check_limit_stmt);
     }
 
-    // Validate category_id exists
-    if (empty($error_message)) {
-        $category_check = mysqli_prepare($conn, "SELECT category_id FROM categories WHERE category_id = ?");
-        mysqli_stmt_bind_param($category_check, "i", $category_id);
-        mysqli_stmt_execute($category_check);
-        $category_result = mysqli_stmt_get_result($category_check);
-        if (mysqli_num_rows($category_result) === 0) {
-            $error_message = "Invalid category selected.";
-        }
-        mysqli_stmt_close($category_check);
-    }
+    if ($limit_data && $limit_data['current_products'] >= $limit_data['product_limit']) {
+        $error_message = "You have reached your " . ucfirst($limit_data['subscription_tier']) . " tier limit of " . $limit_data['product_limit'] . " products. Please upgrade your subscription to add more products.";
+    } else {
+        $name = mysqli_real_escape_string($conn, $_POST['name']);
+        $description = mysqli_real_escape_string($conn, $_POST['description']);
+        $price = floatval($_POST['price']);
+        $stock = intval($_POST['stock']);
+        $category_id = intval($_POST['category_id']);
+        $packaging = mysqli_real_escape_string($conn, $_POST['packaging'] ?? ''); // Added packaging field
 
-    if (empty($error_message)) {
-        // Handle image upload
-        $image_url = '';
-        if (isset($_FILES['image']) && $_FILES['image']['error'] === 0) {
-            $allowed = ['jpg', 'jpeg', 'png', 'webp'];
-            $filename = $_FILES['image']['name'];
-            $ext = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
-            
-            if (in_array($ext, $allowed)) {
-                $new_filename = uniqid() . '.' . $ext;
-                $upload_path = 'uploads/products/' . $new_filename;
+        // Validate inputs
+        if (empty($error_message)) {
+            if (empty($name)) {
+                $error_message = "Product name is required.";
+            } elseif (empty($description)) {
+                $error_message = "Description is required.";
+            } elseif ($price <= 0) {
+                $error_message = "Price must be greater than 0.";
+            } elseif ($stock < 0) {
+                $error_message = "Stock cannot be negative.";
+            } elseif ($category_id <= 0) {
+                $error_message = "Please select a valid category.";
+            }
+        }
+
+        // Validate category_id exists
+        if (empty($error_message)) {
+            $category_check = mysqli_prepare($conn, "SELECT category_id FROM categories WHERE category_id = ?");
+            mysqli_stmt_bind_param($category_check, "i", $category_id);
+            mysqli_stmt_execute($category_check);
+            $category_result = mysqli_stmt_get_result($category_check);
+            if (mysqli_num_rows($category_result) === 0) {
+                $error_message = "Invalid category selected.";
+            }
+            mysqli_stmt_close($category_check);
+        }
+
+        if (empty($error_message)) {
+            // Handle image upload
+            $image_url = '';
+            if (isset($_FILES['image']) && $_FILES['image']['error'] === 0) {
+                $allowed = ['jpg', 'jpeg', 'png', 'webp'];
+                $filename = $_FILES['image']['name'];
+                $ext = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
                 
-                // Ensure the uploads/products/ directory exists and is writable
-                // Run: mkdir -p uploads/products && chmod 775 uploads/products && chown www-data:www-data uploads/products
-                if (move_uploaded_file($_FILES['image']['tmp_name'], $upload_path)) {
-                    $image_url = $upload_path;
+                if (in_array($ext, $allowed)) {
+                    $new_filename = uniqid() . '.' . $ext;
+                    $upload_path = 'uploads/products/' . $new_filename;
+                    
+                    // Ensure the uploads/products/ directory exists and is writable
+                    // Run: mkdir -p uploads/products && chmod 775 uploads/products && chown www-data:www-data uploads/products
+                    if (move_uploaded_file($_FILES['image']['tmp_name'], $upload_path)) {
+                        $image_url = $upload_path;
+                    } else {
+                        $error_message = "Failed to upload image. Please try again.";
+                    }
                 } else {
-                    $error_message = "Failed to upload image. Please try again.";
+                    $error_message = "Invalid image format. Allowed formats: JPG, JPEG, PNG, WEBP";
                 }
             } else {
-                $error_message = "Invalid image format. Allowed formats: JPG, JPEG, PNG, WEBP";
+                $error_message = "Image is required.";
             }
-        } else {
-            $error_message = "Image is required.";
         }
+        
+        if (empty($error_message) && !empty($image_url)) {
+            // Insert product into database
+            $query = "INSERT INTO products (vendor_id, name, description, price, stock, packaging, category_id, image_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
+            $stmt = mysqli_prepare($conn, $query);
+            mysqli_stmt_bind_param($stmt, 'issdisss', $vendor_id, $name, $description, $price, $stock, $packaging, $category_id, $image_url);
+            
+            if (mysqli_stmt_execute($stmt)) {
+                $success_message = "Product added successfully!";
+                // Clear form
+                $_POST = array();
+            } else {
+                // Log the detailed error for debugging
+                $detailed_error = "Failed to add product: " . mysqli_error($conn) . " | Query: " . $query . " | Values: " . json_encode([$vendor_id, $name, $description, $price, $stock, $packaging, $category_id, $image_url]);
+                error_log($detailed_error);
+                $error_message = "Failed to add product. Please try again. (Error: " . htmlspecialchars(mysqli_error($conn)) . ")";
+            }
+            
+            mysqli_stmt_close($stmt);
+        } 
     }
-        
-    if (empty($error_message) && !empty($image_url)) {
-        // Insert product into database
-        $query = "INSERT INTO products (vendor_id, name, description, price, stock, packaging, category_id, image_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
-        $stmt = mysqli_prepare($conn, $query);
-        mysqli_stmt_bind_param($stmt, 'issdisss', $vendor_id, $name, $description, $price, $stock, $packaging, $category_id, $image_url);
-        
-        if (mysqli_stmt_execute($stmt)) {
-            $success_message = "Product added successfully!";
-            // Clear form
-            $_POST = array();
-        } else {
-            // Log the detailed error for debugging
-            $detailed_error = "Failed to add product: " . mysqli_error($conn) . " | Query: " . $query . " | Values: " . json_encode([$vendor_id, $name, $description, $price, $stock, $packaging, $category_id, $image_url]);
-            error_log($detailed_error);
-            $error_message = "Failed to add product. Please try again. (Error: " . htmlspecialchars(mysqli_error($conn)) . ")";
-        }
-        
-        mysqli_stmt_close($stmt);
-    } 
 }
 
 // Handle bulk CSV upload
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['upload_type']) && $_POST['upload_type'] === 'bulk') {
+    // Check subscription tier limit for bulk upload
+    $check_limit_query = "SELECT v.subscription_tier, stl.product_limit,
+                         (SELECT COUNT(*) FROM products p WHERE p.vendor_id = v.vendor_id AND p.deleted_at IS NULL) as current_products
+                         FROM vendors v 
+                         JOIN subscription_tier_limits stl ON v.subscription_tier = stl.tier
+                         WHERE v.vendor_id = ?";
+    $check_limit_stmt = mysqli_prepare($conn, $check_limit_query);
+    
+    if ($check_limit_stmt === false) {
+        $error_message = "Database error: " . mysqli_error($conn);
+    } else {
+        mysqli_stmt_bind_param($check_limit_stmt, "i", $vendor_id);
+        mysqli_stmt_execute($check_limit_stmt);
+        $limit_result = mysqli_stmt_get_result($check_limit_stmt);
+        $limit_data = mysqli_fetch_assoc($limit_result);
+        mysqli_stmt_close($check_limit_stmt);
+    }
+
     if (isset($_FILES['csv_file']) && $_FILES['csv_file']['error'] === 0) {
         $file_tmp = $_FILES['csv_file']['tmp_name'];
         $file_ext = strtolower(pathinfo($_FILES['csv_file']['name'], PATHINFO_EXTENSION));
@@ -132,159 +196,175 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['upload_type']) && $_P
         } else {
             // Process CSV file
             if (($handle = fopen($file_tmp, "r")) !== FALSE) {
-                // Skip header row
-                $header = fgetcsv($handle, 1000, ",");
-                $required_columns = ["name", "description", "price", "stock", "category_id", "packaging"];
-                $optional_columns = ["image_url", "image_file"];
-                $found_columns = array_map('strtolower', $header);
-                
-                // Validate CSV structure
-                $missing_columns = array_diff($required_columns, $found_columns);
-                
-                // Check if at least one of image_url or image_file is present
-                if (!in_array('image_url', $found_columns) && !in_array('image_file', $found_columns)) {
-                    $missing_columns[] = 'image_url or image_file';
+                // Count number of rows in CSV (excluding header)
+                $row_count = -1; // Start at -1 to exclude header
+                while (fgetcsv($handle) !== FALSE) {
+                    $row_count++;
                 }
-                
-                if (!empty($missing_columns)) {
-                    $error_message = "CSV file is missing required columns: " . implode(", ", $missing_columns);
+                rewind($handle);
+
+                // Check if adding these products would exceed the limit
+                if ($limit_data && ($limit_data['current_products'] + $row_count) > $limit_data['product_limit']) {
+                    $error_message = "This bulk upload would exceed your " . ucfirst($limit_data['subscription_tier']) . 
+                                   " tier limit of " . $limit_data['product_limit'] . " products. " .
+                                   "You can only add " . ($limit_data['product_limit'] - $limit_data['current_products']) . 
+                                   " more products. Please upgrade your subscription or reduce the number of products.";
+                    fclose($handle);
                 } else {
-                    // Image directory
-                    if (!file_exists('uploads/products/')) {
-                        mkdir('uploads/products/', 0775, true);
+                    // Skip header row
+                    $header = fgetcsv($handle, 1000, ",");
+                    $required_columns = ["name", "description", "price", "stock", "category_id", "packaging"];
+                    $optional_columns = ["image_url", "image_file"];
+                    $found_columns = array_map('strtolower', $header);
+                    
+                    // Validate CSV structure
+                    $missing_columns = array_diff($required_columns, $found_columns);
+                    
+                    // Check if at least one of image_url or image_file is present
+                    if (!in_array('image_url', $found_columns) && !in_array('image_file', $found_columns)) {
+                        $missing_columns[] = 'image_url or image_file';
                     }
                     
-                    // Create temp directory for uploaded images
-                    $temp_image_dir = 'uploads/temp/';
-                    if (!file_exists($temp_image_dir)) {
-                        mkdir($temp_image_dir, 0775, true);
-                    }
-                    
-                    // Prepare the insert statement
-                    $insert_query = "INSERT INTO products (vendor_id, name, description, price, stock, packaging, category_id, image_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
-                    $insert_stmt = mysqli_prepare($conn, $insert_query);
-                    
-                    if ($insert_stmt) {
-                        // Map column indexes
-                        $column_indexes = [];
-                        foreach (array_merge($required_columns, $optional_columns) as $col) {
-                            $idx = array_search(strtolower($col), array_map('strtolower', $header));
-                            if ($idx !== false) {
-                                $column_indexes[$col] = $idx;
-                            }
+                    if (!empty($missing_columns)) {
+                        $error_message = "CSV file is missing required columns: " . implode(", ", $missing_columns);
+                    } else {
+                        // Image directory
+                        if (!file_exists('uploads/products/')) {
+                            mkdir('uploads/products/', 0775, true);
                         }
                         
-                        // Process each row
-                        $row_num = 1; // Start with 1 to account for header as row 0
-                        while (($data = fgetcsv($handle, 1000, ",")) !== FALSE) {
-                            $row_num++;
+                        // Create temp directory for uploaded images
+                        $temp_image_dir = 'uploads/temp/';
+                        if (!file_exists($temp_image_dir)) {
+                            mkdir($temp_image_dir, 0775, true);
+                        }
+                        
+                        // Prepare the insert statement
+                        $insert_query = "INSERT INTO products (vendor_id, name, description, price, stock, packaging, category_id, image_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
+                        $insert_stmt = mysqli_prepare($conn, $insert_query);
+                        
+                        if ($insert_stmt) {
+                            // Map column indexes
+                            $column_indexes = [];
+                            foreach (array_merge($required_columns, $optional_columns) as $col) {
+                                $idx = array_search(strtolower($col), array_map('strtolower', $header));
+                                if ($idx !== false) {
+                                    $column_indexes[$col] = $idx;
+                                }
+                            }
                             
-                            // Extract data
-                            $name = isset($data[$column_indexes['name']]) ? trim($data[$column_indexes['name']]) : '';
-                            $description = isset($data[$column_indexes['description']]) ? trim($data[$column_indexes['description']]) : '';
-                            $price = isset($data[$column_indexes['price']]) ? floatval(trim($data[$column_indexes['price']])) : 0;
-                            $stock = isset($data[$column_indexes['stock']]) ? intval(trim($data[$column_indexes['stock']])) : 0;
-                            $category_id = isset($data[$column_indexes['category_id']]) ? intval(trim($data[$column_indexes['category_id']])) : 0;
-                            $packaging = isset($data[$column_indexes['packaging']]) ? trim($data[$column_indexes['packaging']]) : '';
-                            
-                            // Handle image (either URL or file path)
-                            $image_url = '';
-                            
-                            if (isset($column_indexes['image_url']) && isset($data[$column_indexes['image_url']]) && !empty($data[$column_indexes['image_url']])) {
-                                // Use direct URL
-                                $image_url = trim($data[$column_indexes['image_url']]);
-                            } elseif (isset($column_indexes['image_file']) && isset($data[$column_indexes['image_file']]) && !empty($data[$column_indexes['image_file']])) {
-                                // Handle local image file path
-                                $image_file = trim($data[$column_indexes['image_file']]);
+                            // Process each row
+                            $row_num = 1; // Start with 1 to account for header as row 0
+                            while (($data = fgetcsv($handle, 1000, ",")) !== FALSE) {
+                                $row_num++;
                                 
-                                // Check if the file exists in the temp directory
-                                if (file_exists($temp_image_dir . $image_file)) {
-                                    $file_ext = strtolower(pathinfo($image_file, PATHINFO_EXTENSION));
-                                    $allowed = ['jpg', 'jpeg', 'png', 'webp'];
+                                // Extract data
+                                $name = isset($data[$column_indexes['name']]) ? trim($data[$column_indexes['name']]) : '';
+                                $description = isset($data[$column_indexes['description']]) ? trim($data[$column_indexes['description']]) : '';
+                                $price = isset($data[$column_indexes['price']]) ? floatval(trim($data[$column_indexes['price']])) : 0;
+                                $stock = isset($data[$column_indexes['stock']]) ? intval(trim($data[$column_indexes['stock']])) : 0;
+                                $category_id = isset($data[$column_indexes['category_id']]) ? intval(trim($data[$column_indexes['category_id']])) : 0;
+                                $packaging = isset($data[$column_indexes['packaging']]) ? trim($data[$column_indexes['packaging']]) : '';
+                                
+                                // Handle image (either URL or file path)
+                                $image_url = '';
+                                
+                                if (isset($column_indexes['image_url']) && isset($data[$column_indexes['image_url']]) && !empty($data[$column_indexes['image_url']])) {
+                                    // Use direct URL
+                                    $image_url = trim($data[$column_indexes['image_url']]);
+                                } elseif (isset($column_indexes['image_file']) && isset($data[$column_indexes['image_file']]) && !empty($data[$column_indexes['image_file']])) {
+                                    // Handle local image file path
+                                    $image_file = trim($data[$column_indexes['image_file']]);
                                     
-                                    if (in_array($file_ext, $allowed)) {
-                                        $new_filename = uniqid() . '.' . $file_ext;
-                                        $upload_path = 'uploads/products/' . $new_filename;
+                                    // Check if the file exists in the temp directory
+                                    if (file_exists($temp_image_dir . $image_file)) {
+                                        $file_ext = strtolower(pathinfo($image_file, PATHINFO_EXTENSION));
+                                        $allowed = ['jpg', 'jpeg', 'png', 'webp'];
                                         
-                                        if (copy($temp_image_dir . $image_file, $upload_path)) {
-                                            $image_url = $upload_path;
+                                        if (in_array($file_ext, $allowed)) {
+                                            $new_filename = uniqid() . '.' . $file_ext;
+                                            $upload_path = 'uploads/products/' . $new_filename;
+                                            
+                                            if (copy($temp_image_dir . $image_file, $upload_path)) {
+                                                $image_url = $upload_path;
+                                            } else {
+                                                $bulk_errors[] = "Row {$row_num}: Failed to move image file {$image_file}";
+                                                $bulk_error_count++;
+                                                continue;
+                                            }
                                         } else {
-                                            $bulk_errors[] = "Row {$row_num}: Failed to move image file {$image_file}";
+                                            $bulk_errors[] = "Row {$row_num}: Invalid image format. Allowed: JPG, JPEG, PNG, WEBP";
                                             $bulk_error_count++;
                                             continue;
                                         }
                                     } else {
-                                        $bulk_errors[] = "Row {$row_num}: Invalid image format. Allowed: JPG, JPEG, PNG, WEBP";
+                                        $bulk_errors[] = "Row {$row_num}: Image file {$image_file} not found";
                                         $bulk_error_count++;
                                         continue;
                                     }
-                                } else {
-                                    $bulk_errors[] = "Row {$row_num}: Image file {$image_file} not found";
+                                }
+                                
+                                // Validate row data
+                                $row_error = '';
+                                if (empty($name)) {
+                                    $row_error = "Product name is required";
+                                } elseif (empty($description)) {
+                                    $row_error = "Description is required";
+                                } elseif ($price <= 0) {
+                                    $row_error = "Price must be greater than 0";
+                                } elseif ($stock < 0) {
+                                    $row_error = "Stock cannot be negative";
+                                } elseif ($category_id <= 0 || !isset($categories[$category_id])) {
+                                    $row_error = "Invalid category ID";
+                                } elseif (empty($image_url)) {
+                                    $row_error = "Image URL or file is required";
+                                }
+                                
+                                if (!empty($row_error)) {
+                                    $bulk_errors[] = "Row {$row_num}: {$row_error}";
                                     $bulk_error_count++;
                                     continue;
                                 }
+                                
+                                // Bind parameters and execute
+                                mysqli_stmt_bind_param($insert_stmt, 'issdisss', $vendor_id, $name, $description, $price, $stock, $packaging, $category_id, $image_url);
+                                
+                                if (mysqli_stmt_execute($insert_stmt)) {
+                                    $bulk_success_count++;
+                                } else {
+                                    $bulk_errors[] = "Row {$row_num}: Database error - " . mysqli_error($conn);
+                                    $bulk_error_count++;
+                                }
                             }
                             
-                            // Validate row data
-                            $row_error = '';
-                            if (empty($name)) {
-                                $row_error = "Product name is required";
-                            } elseif (empty($description)) {
-                                $row_error = "Description is required";
-                            } elseif ($price <= 0) {
-                                $row_error = "Price must be greater than 0";
-                            } elseif ($stock < 0) {
-                                $row_error = "Stock cannot be negative";
-                            } elseif ($category_id <= 0 || !isset($categories[$category_id])) {
-                                $row_error = "Invalid category ID";
-                            } elseif (empty($image_url)) {
-                                $row_error = "Image URL or file is required";
-                            }
+                            mysqli_stmt_close($insert_stmt);
                             
-                            if (!empty($row_error)) {
-                                $bulk_errors[] = "Row {$row_num}: {$row_error}";
-                                $bulk_error_count++;
-                                continue;
-                            }
-                            
-                            // Bind parameters and execute
-                            mysqli_stmt_bind_param($insert_stmt, 'issdisss', $vendor_id, $name, $description, $price, $stock, $packaging, $category_id, $image_url);
-                            
-                            if (mysqli_stmt_execute($insert_stmt)) {
-                                $bulk_success_count++;
+                            if ($bulk_success_count > 0) {
+                                $success_message = "{$bulk_success_count} products uploaded successfully!";
+                                if ($bulk_error_count > 0) {
+                                    $error_message = "{$bulk_error_count} products failed to upload. See details below.";
+                                }
+                            } elseif ($bulk_error_count > 0) {
+                                $error_message = "All products failed to upload. See details below.";
                             } else {
-                                $bulk_errors[] = "Row {$row_num}: Database error - " . mysqli_error($conn);
-                                $bulk_error_count++;
+                                $error_message = "No products found in the CSV file.";
                             }
-                        }
-                        
-                        mysqli_stmt_close($insert_stmt);
-                        
-                        if ($bulk_success_count > 0) {
-                            $success_message = "{$bulk_success_count} products uploaded successfully!";
-                            if ($bulk_error_count > 0) {
-                                $error_message = "{$bulk_error_count} products failed to upload. See details below.";
-                            }
-                        } elseif ($bulk_error_count > 0) {
-                            $error_message = "All products failed to upload. See details below.";
                         } else {
-                            $error_message = "No products found in the CSV file.";
+                            $error_message = "Database error: " . mysqli_error($conn);
                         }
-                    } else {
-                        $error_message = "Database error: " . mysqli_error($conn);
+                        
+                        // Clean up temp directory
+                        if (file_exists($temp_image_dir)) {
+                            foreach (glob($temp_image_dir . '*') as $file) {
+                                if (is_file($file)) {
+                                    unlink($file);
+                                }
+                            }
+                        }
                     }
                     
-                    // Clean up temp directory
-                    if (file_exists($temp_image_dir)) {
-                        foreach (glob($temp_image_dir . '*') as $file) {
-                            if (is_file($file)) {
-                                unlink($file);
-                            }
-                        }
-                    }
+                    fclose($handle);
                 }
-                
-                fclose($handle);
             } else {
                 $error_message = "Failed to open CSV file.";
             }
@@ -652,6 +732,55 @@ if (isset($_GET['download_sample'])) {
             margin-top: 1rem;
             background: #fff8f8;
         }
+
+        /* Add styles for product limit indicator */
+        .product-limit-indicator {
+            background: #f8f9fa;
+            padding: 1rem;
+            border-radius: 8px;
+            margin-bottom: 2rem;
+            text-align: center;
+        }
+
+        .product-limit-bar {
+            background: #e9ecef;
+            height: 20px;
+            border-radius: 10px;
+            margin: 1rem 0;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .product-limit-progress {
+            background: var(--primary-color);
+            height: 100%;
+            border-radius: 10px;
+            transition: width 0.3s ease;
+        }
+
+        .product-limit-text {
+            margin-top: 0.5rem;
+            color: var(--dark-gray);
+        }
+
+        .product-limit-warning {
+            color: var(--danger-color);
+            margin-top: 0.5rem;
+            display: none;
+        }
+
+        .product-limit-bar.near-limit .product-limit-progress {
+            background: var(--warning-color);
+        }
+
+        .product-limit-bar.at-limit .product-limit-progress {
+            background: var(--danger-color);
+        }
+
+        .product-limit-bar.near-limit ~ .product-limit-warning,
+        .product-limit-bar.at-limit ~ .product-limit-warning {
+            display: block;
+        }
     </style>
 </head>
 <body>
@@ -663,6 +792,32 @@ if (isset($_GET['download_sample'])) {
                 <h1 class="form-title">Add New Product</h1>
                 <p class="form-subtitle">Fill in the details below to list your product</p>
             </div>
+
+            <?php if ($limit_data): ?>
+            <div class="product-limit-indicator">
+                <h3>Product Upload Limit</h3>
+                <?php
+                $percentage = ($limit_data['current_products'] / $limit_data['product_limit']) * 100;
+                $limit_class = $percentage >= 100 ? 'at-limit' : ($percentage >= 80 ? 'near-limit' : '');
+                ?>
+                <div class="product-limit-bar <?php echo $limit_class; ?>">
+                    <div class="product-limit-progress" style="width: <?php echo min(100, $percentage); ?>%;"></div>
+                </div>
+                <div class="product-limit-text">
+                    <?php echo $limit_data['current_products']; ?> of <?php echo $limit_data['product_limit']; ?> products used
+                    (<?php echo ucfirst($limit_data['subscription_tier']); ?> tier)
+                </div>
+                <?php if ($percentage >= 80): ?>
+                <div class="product-limit-warning">
+                    <?php if ($percentage >= 100): ?>
+                        You have reached your product limit. Please upgrade your subscription to add more products.
+                    <?php else: ?>
+                        You are approaching your product limit. Consider upgrading your subscription soon.
+                    <?php endif; ?>
+                </div>
+                <?php endif; ?>
+            </div>
+            <?php endif; ?>
 
             <?php if ($success_message): ?>
                 <div class="alert alert-success">

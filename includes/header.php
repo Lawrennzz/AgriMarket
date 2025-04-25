@@ -349,7 +349,7 @@
                                     <i class="fas fa-tachometer-alt"></i> Admin Dashboard
                                 </a>
                             <?php elseif ($_SESSION['role'] === 'staff'): ?>
-                                <a href="staff/dashboard.php" class="dropdown-item">
+                                <a href="staff_dashboard.php" class="dropdown-item">
                                     <i class="fas fa-tachometer-alt"></i> Staff Dashboard
                                 </a>
                             <?php elseif ($_SESSION['role'] === 'vendor'): ?>

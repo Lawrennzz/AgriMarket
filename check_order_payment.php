@@ -8,15 +8,29 @@ if (!isset($_SESSION['user_id'])) {
 }
 
 $user_id = $_SESSION['user_id'];
+$is_vendor = isset($_SESSION['role']) && $_SESSION['role'] === 'vendor';
 $order_id = isset($_GET['id']) ? intval($_GET['id']) : 0;
 $error_message = '';
 $success_message = '';
 
-// Validate order exists and belongs to user
+// Validate order exists and check permissions
 if ($order_id <= 0) {
     $error_message = "Invalid order ID.";
 } else {
-    $check_query = "SELECT o.* FROM orders o WHERE o.order_id = ? AND o.user_id = ?";
+    if ($is_vendor) {
+        // For vendors, check if they have any products in this order
+        $check_query = "
+            SELECT DISTINCT o.* 
+            FROM orders o
+            JOIN order_items oi ON o.order_id = oi.order_id
+            JOIN products p ON oi.product_id = p.product_id
+            JOIN vendors v ON p.vendor_id = v.vendor_id
+            WHERE o.order_id = ? AND v.user_id = ?";
+    } else {
+        // For customers, check if they own the order
+        $check_query = "SELECT o.* FROM orders o WHERE o.order_id = ? AND o.user_id = ?";
+    }
+    
     $check_stmt = mysqli_prepare($conn, $check_query);
     
     if (!$check_stmt) {
@@ -27,25 +41,42 @@ if ($order_id <= 0) {
         $result = mysqli_stmt_get_result($check_stmt);
         
         if (mysqli_num_rows($result) === 0) {
-            $error_message = "Order not found or you don't have permission to view it.";
+            $error_message = $is_vendor ? 
+                "Order not found or it doesn't contain any of your products." : 
+                "Order not found or you don't have permission to view it.";
         } else {
             $order = mysqli_fetch_assoc($result);
             
             // Get order items
-            $items_query = "
-                SELECT oi.*, p.name, p.image_url, v.vendor_id, u.name AS vendor_name 
-                FROM order_items oi
-                JOIN products p ON oi.product_id = p.product_id
-                JOIN vendors v ON p.vendor_id = v.vendor_id
-                JOIN users u ON v.user_id = u.user_id
-                WHERE oi.order_id = ?";
-                
-            $items_stmt = mysqli_prepare($conn, $items_query);
+            if ($is_vendor) {
+                // For vendors, only show their products
+                $items_query = "
+                    SELECT oi.*, p.name, p.image_url, v.vendor_id, u.name AS vendor_name 
+                    FROM order_items oi
+                    JOIN products p ON oi.product_id = p.product_id
+                    JOIN vendors v ON p.vendor_id = v.vendor_id
+                    JOIN users u ON v.user_id = u.user_id
+                    WHERE oi.order_id = ? AND v.user_id = ?";
+                    
+                $items_stmt = mysqli_prepare($conn, $items_query);
+                mysqli_stmt_bind_param($items_stmt, "ii", $order_id, $user_id);
+            } else {
+                // For customers, show all items
+                $items_query = "
+                    SELECT oi.*, p.name, p.image_url, v.vendor_id, u.name AS vendor_name 
+                    FROM order_items oi
+                    JOIN products p ON oi.product_id = p.product_id
+                    JOIN vendors v ON p.vendor_id = v.vendor_id
+                    JOIN users u ON v.user_id = u.user_id
+                    WHERE oi.order_id = ?";
+                    
+                $items_stmt = mysqli_prepare($conn, $items_query);
+                mysqli_stmt_bind_param($items_stmt, "i", $order_id);
+            }
             
             if (!$items_stmt) {
                 $error_message = "Database error: " . mysqli_error($conn);
             } else {
-                mysqli_stmt_bind_param($items_stmt, "i", $order_id);
                 mysqli_stmt_execute($items_stmt);
                 $items_result = mysqli_stmt_get_result($items_stmt);
                 

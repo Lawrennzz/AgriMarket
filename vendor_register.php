@@ -225,9 +225,25 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 <div class="form-group">
                     <i class="fas fa-layer-group"></i>
                     <select name="subscription_tier" class="form-control" required>
-                        <option value="basic">Basic</option>
-                        <option value="premium">Premium</option>
-                        <option value="enterprise">Enterprise</option>
+                        <?php
+                        // Fetch available tiers from subscription_tier_limits table
+                        $tiers_query = "SELECT tier, product_limit, price FROM subscription_tier_limits ORDER BY price ASC";
+                        $tiers_result = mysqli_query($conn, $tiers_query);
+                        
+                        if ($tiers_result) {
+                            while ($tier = mysqli_fetch_assoc($tiers_result)) {
+                                $tier_name = ucfirst($tier['tier']);
+                                $price_text = $tier['price'] > 0 ? ' ($' . number_format($tier['price'], 2) . '/month)' : ' (Free)';
+                                $products_text = $tier['product_limit'] === 999999 ? 'Unlimited' : $tier['product_limit'];
+                                echo '<option value="' . htmlspecialchars($tier['tier']) . '">' 
+                                     . htmlspecialchars($tier_name) 
+                                     . ' - ' . $products_text . ' products'
+                                     . $price_text 
+                                     . '</option>';
+                            }
+                            mysqli_free_result($tiers_result);
+                        }
+                        ?>
                     </select>
                 </div>
 

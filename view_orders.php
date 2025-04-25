@@ -13,12 +13,31 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'staff') {
 $orders_per_page = 20;
 $current_page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
 $offset = ($current_page - 1) * $orders_per_page;
-$search = isset($_GET['search']) ? mysqli_real_escape_string($conn, $_GET['search']) : '';
-$status = isset($_GET['status']) ? mysqli_real_escape_string($conn, $_GET['status']) : '';
-$payment_status = isset($_GET['payment_status']) ? mysqli_real_escape_string($conn, $_GET['payment_status']) : '';
-$date_from = isset($_GET['date_from']) ? mysqli_real_escape_string($conn, $_GET['date_from']) : '';
-$date_to = isset($_GET['date_to']) ? mysqli_real_escape_string($conn, $_GET['date_to']) : '';
-$sort = isset($_GET['sort']) ? mysqli_real_escape_string($conn, $_GET['sort']) : 'newest';
+
+// Sanitize and validate filter inputs
+$search = isset($_GET['search']) ? trim($_GET['search']) : '';
+$status = isset($_GET['status']) ? trim($_GET['status']) : '';
+$payment_status = isset($_GET['payment_status']) ? trim($_GET['payment_status']) : '';
+$date_from = isset($_GET['date_from']) ? trim($_GET['date_from']) : '';
+$date_to = isset($_GET['date_to']) ? trim($_GET['date_to']) : '';
+$sort = isset($_GET['sort']) ? trim($_GET['sort']) : 'newest';
+
+// Validate status values
+$valid_statuses = ['pending', 'processing', 'shipped', 'delivered', 'cancelled', 'completed'];
+$valid_payment_statuses = ['paid', 'unpaid', 'refunded'];
+$valid_sorts = ['newest', 'oldest', 'highest', 'lowest'];
+
+if (!in_array($status, $valid_statuses) && $status !== '') {
+    $status = '';
+}
+
+if (!in_array($payment_status, $valid_payment_statuses) && $payment_status !== '') {
+    $payment_status = '';
+}
+
+if (!in_array($sort, $valid_sorts)) {
+    $sort = 'newest';
+}
 
 // Base query
 $query = "
@@ -31,25 +50,41 @@ $query = "
     WHERE 1=1
 ";
 
-// Apply filters
+// Apply filters with prepared statements
+$params = [];
+$types = "";
+
 if (!empty($search)) {
-    $query .= " AND (o.order_id LIKE '%$search%' OR u.name LIKE '%$search%' OR u.email LIKE '%$search%')";
+    $query .= " AND (o.order_id LIKE ? OR u.name LIKE ? OR u.email LIKE ?)";
+    $search_param = "%$search%";
+    $params[] = $search_param;
+    $params[] = $search_param;
+    $params[] = $search_param;
+    $types .= "sss";
 }
 
 if (!empty($status)) {
-    $query .= " AND o.status = '$status'";
+    $query .= " AND o.status = ?";
+    $params[] = $status;
+    $types .= "s";
 }
 
 if (!empty($payment_status)) {
-    $query .= " AND o.payment_status = '$payment_status'";
+    $query .= " AND o.payment_status = ?";
+    $params[] = $payment_status;
+    $types .= "s";
 }
 
 if (!empty($date_from)) {
-    $query .= " AND o.created_at >= '$date_from 00:00:00'";
+    $query .= " AND o.created_at >= ?";
+    $params[] = "$date_from 00:00:00";
+    $types .= "s";
 }
 
 if (!empty($date_to)) {
-    $query .= " AND o.created_at <= '$date_to 23:59:59'";
+    $query .= " AND o.created_at <= ?";
+    $params[] = "$date_to 23:59:59";
+    $types .= "s";
 }
 
 // Group by order ID
@@ -72,41 +107,79 @@ switch ($sort) {
         break;
 }
 
-// Count total orders for pagination
+// Add pagination to the main query
+$query .= " LIMIT ?, ?";
+$params[] = $offset;
+$params[] = $orders_per_page;
+$types .= "ii";
+
+// Prepare and execute the query
+$stmt = mysqli_prepare($conn, $query);
+if ($stmt) {
+    if (!empty($params)) {
+        mysqli_stmt_bind_param($stmt, $types, ...$params);
+    }
+    mysqli_stmt_execute($stmt);
+    $orders_result = mysqli_stmt_get_result($stmt);
+} else {
+    die("Error preparing statement: " . mysqli_error($conn));
+}
+
+// Count total orders for pagination (using the same filters)
 $count_query = "SELECT COUNT(DISTINCT o.order_id) as total FROM orders o 
                 LEFT JOIN users u ON o.user_id = u.user_id 
                 WHERE 1=1";
 
+$count_params = [];
+$count_types = "";
+
 if (!empty($search)) {
-    $count_query .= " AND (o.order_id LIKE '%$search%' OR u.name LIKE '%$search%' OR u.email LIKE '%$search%')";
+    $count_query .= " AND (o.order_id LIKE ? OR u.name LIKE ? OR u.email LIKE ?)";
+    $search_param = "%$search%";
+    $count_params[] = $search_param;
+    $count_params[] = $search_param;
+    $count_params[] = $search_param;
+    $count_types .= "sss";
 }
 
 if (!empty($status)) {
-    $count_query .= " AND o.status = '$status'";
+    $count_query .= " AND o.status = ?";
+    $count_params[] = $status;
+    $count_types .= "s";
 }
 
 if (!empty($payment_status)) {
-    $count_query .= " AND o.payment_status = '$payment_status'";
+    $count_query .= " AND o.payment_status = ?";
+    $count_params[] = $payment_status;
+    $count_types .= "s";
 }
 
 if (!empty($date_from)) {
-    $count_query .= " AND o.created_at >= '$date_from 00:00:00'";
+    $count_query .= " AND o.created_at >= ?";
+    $count_params[] = "$date_from 00:00:00";
+    $count_types .= "s";
 }
 
 if (!empty($date_to)) {
-    $count_query .= " AND o.created_at <= '$date_to 23:59:59'";
+    $count_query .= " AND o.created_at <= ?";
+    $count_params[] = "$date_to 23:59:59";
+    $count_types .= "s";
 }
 
-$count_result = mysqli_query($conn, $count_query);
-$count_data = mysqli_fetch_assoc($count_result);
-$total_orders = $count_data['total'];
+$count_stmt = mysqli_prepare($conn, $count_query);
+if ($count_stmt) {
+    if (!empty($count_params)) {
+        mysqli_stmt_bind_param($count_stmt, $count_types, ...$count_params);
+    }
+    mysqli_stmt_execute($count_stmt);
+    $count_result = mysqli_stmt_get_result($count_stmt);
+    $count_data = mysqli_fetch_assoc($count_result);
+    $total_orders = $count_data['total'];
+} else {
+    die("Error preparing count statement: " . mysqli_error($conn));
+}
+
 $total_pages = ceil($total_orders / $orders_per_page);
-
-// Add pagination to the main query
-$query .= " LIMIT $offset, $orders_per_page";
-
-// Execute the query
-$orders_result = mysqli_query($conn, $query);
 
 $page_title = "View Orders";
 ?>

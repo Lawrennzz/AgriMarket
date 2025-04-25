@@ -2,10 +2,14 @@
 session_start();
 require_once 'includes/db_connection.php';
 require_once 'includes/functions.php';
+require_once 'includes/ratings.php';
 
 // Initialize variables
 $product = null;
 $error_message = '';
+
+// Initialize RatingSystem
+$ratingSystem = new RatingSystem($conn);
 
 // Check if product ID is provided
 if (isset($_GET['id']) && is_numeric($_GET['id'])) {
@@ -95,7 +99,7 @@ if (isset($_GET['id']) && is_numeric($_GET['id'])) {
                 $purchase_data = mysqli_fetch_assoc($purchase_result);
                 
                 $can_review = $purchase_data !== null;
-                $has_reviewed = hasUserReviewedProduct($_SESSION['user_id'], $product['product_id']);
+                $has_reviewed = $ratingSystem->hasUserReviewedProduct($_SESSION['user_id'], $product['product_id']);
                 
                 if ($can_review) {
                     $purchase_date = date('F j, Y', strtotime($purchase_data['purchase_date']));
