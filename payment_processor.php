@@ -16,34 +16,67 @@ require_once 'config.php';
  * @return array Result with success status and message
  */
 function process_payment($payment_method, $amount, $order_data, $user_data) {
-    // Get any payment-specific details from the form
-    $payment_details = $_POST[$payment_method . '_details'] ?? [];
+    global $conn;
     
-    switch ($payment_method) {
-        case 'cash_on_delivery':
-            return process_cod_payment($amount, $order_data, $user_data);
+    // Start transaction if not already in one
+    mysqli_begin_transaction($conn);
+    
+    try {
+        // Get any payment-specific details from the form
+        $payment_details = $_POST[$payment_method . '_details'] ?? [];
         
-        case 'bank_transfer':
-            return process_bank_transfer($amount, $order_data, $user_data, $payment_details);
+        $result = null;
         
-        case 'credit_card':
-            return process_credit_card_payment($amount, $order_data, $user_data, $payment_details);
+        switch ($payment_method) {
+            case 'cash_on_delivery':
+                $result = process_cod_payment($amount, $order_data, $user_data);
+                break;
+            
+            case 'bank_transfer':
+                $result = process_bank_transfer($amount, $order_data, $user_data, $payment_details);
+                break;
+            
+            case 'credit_card':
+                $result = process_credit_card_payment($amount, $order_data, $user_data, $payment_details);
+                break;
+            
+            case 'paypal':
+                $result = process_paypal_payment($amount, $order_data, $user_data, $payment_details);
+                break;
+                
+            case 'mobile_payment':
+                $result = process_mobile_payment($amount, $order_data, $user_data, $payment_details);
+                break;
+                
+            case 'crypto':
+                $result = process_crypto_payment($amount, $order_data, $user_data, $payment_details);
+                break;
+                
+            default:
+                throw new Exception('Invalid payment method');
+        }
         
-        case 'paypal':
-            return process_paypal_payment($amount, $order_data, $user_data, $payment_details);
-            
-        case 'mobile_payment':
-            return process_mobile_payment($amount, $order_data, $user_data, $payment_details);
-            
-        case 'crypto':
-            return process_crypto_payment($amount, $order_data, $user_data, $payment_details);
-            
-        default:
-            return [
-                'success' => false,
-                'message' => 'Invalid payment method',
-                'transaction_id' => null
-            ];
+        if ($result['success']) {
+            // Log successful payment attempt
+            log_payment_attempt($order_data['order_id'], $payment_method, $amount, $result);
+            mysqli_commit($conn);
+            return $result;
+        } else {
+            throw new Exception($result['message'] ?? 'Payment processing failed');
+        }
+    } catch (Exception $e) {
+        // Rollback transaction on error
+        mysqli_rollback($conn);
+        
+        // Log failed payment attempt
+        $error_result = [
+            'success' => false,
+            'message' => $e->getMessage(),
+            'transaction_id' => null,
+            'status' => 'failed'
+        ];
+        log_payment_attempt($order_data['order_id'], $payment_method, $amount, $error_result);
+        return $error_result;
     }
 }
 
@@ -54,15 +87,17 @@ function process_cod_payment($amount, $order_data, $user_data) {
     // For COD, we simply mark the payment as pending
     // No actual payment processing happens at this stage
     
-    // Log the COD payment request
-    log_payment_attempt('cash_on_delivery', $amount, $order_data['order_id'], true);
-    
-    return [
+    $result = [
         'success' => true,
         'message' => 'Cash on Delivery payment scheduled',
         'transaction_id' => 'COD-' . $order_data['order_id'] . '-' . time(),
         'status' => 'pending'
     ];
+    
+    // Log the COD payment request
+    log_payment_attempt($order_data['order_id'], 'cash_on_delivery', $amount, $result);
+    
+    return $result;
 }
 
 /**
@@ -72,23 +107,12 @@ function process_bank_transfer($amount, $order_data, $user_data, $payment_detail
     // Generate a unique reference number for the transfer
     $reference_number = 'BT-' . $order_data['order_id'] . '-' . substr(md5(uniqid()), 0, 8);
     
-    // In a real implementation, you would:
-    // 1. Generate bank account details or payment instructions
-    // 2. Send these to the customer
-    // 3. Set up a notification system for when the payment is received
-    
     // Store additional details if provided
     $bank_name = $payment_details['bank_name'] ?? 'Not provided';
     $account_name = $payment_details['account_name'] ?? 'Not provided';
     $transfer_date = $payment_details['transfer_date'] ?? date('Y-m-d');
     
-    // Log additional details for reference
-    $details = "Bank: $bank_name, Account: $account_name, Expected: $transfer_date";
-    
-    // Log the bank transfer request
-    log_payment_attempt('bank_transfer', $amount, $order_data['order_id'], true, $details);
-    
-    return [
+    $result = [
         'success' => true,
         'message' => 'Please use reference number ' . $reference_number . ' when making your bank transfer',
         'transaction_id' => $reference_number,
@@ -102,18 +126,17 @@ function process_bank_transfer($amount, $order_data, $user_data, $payment_detail
             'transfer_date' => $transfer_date
         ]
     ];
+    
+    // Log the bank transfer request
+    log_payment_attempt($order_data['order_id'], 'bank_transfer', $amount, $result);
+    
+    return $result;
 }
 
 /**
  * Process Credit Card Payment
  */
 function process_credit_card_payment($amount, $order_data, $user_data, $payment_details = []) {
-    // In a real implementation, you would:
-    // 1. Integrate with a payment gateway like Stripe, PayPal, or Braintree
-    // 2. Validate the credit card details
-    // 3. Process the payment through the gateway
-    // 4. Handle the response
-    
     // Get card details
     $card_number = isset($payment_details['card_number']) ? mask_card_number($payment_details['card_number']) : 'Not provided';
     $card_name = $payment_details['card_name'] ?? 'Not provided';
@@ -123,41 +146,27 @@ function process_credit_card_payment($amount, $order_data, $user_data, $payment_
     $success = true; // Simulate successful payment
     $transaction_id = 'CC-' . time() . '-' . substr(md5(uniqid()), 0, 8);
     
-    // Log additional details
-    $details = "Card: $card_number, Name: $card_name, Exp: $card_expiry";
+    $result = [
+        'success' => $success,
+        'message' => $success ? 'Credit card payment processed successfully' : 'Credit card payment failed',
+        'transaction_id' => $success ? $transaction_id : null,
+        'status' => $success ? 'completed' : 'failed',
+        'card_details' => [
+            'last4' => substr($card_number, -4),
+            'card_type' => detect_card_type($card_number)
+        ]
+    ];
     
     // Log the credit card payment attempt
-    log_payment_attempt('credit_card', $amount, $order_data['order_id'], $success, $details);
+    log_payment_attempt($order_data['order_id'], 'credit_card', $amount, $result);
     
-    if ($success) {
-        return [
-            'success' => true,
-            'message' => 'Credit card payment processed successfully',
-            'transaction_id' => $transaction_id,
-            'status' => 'completed',
-            'card_details' => [
-                'last4' => substr($card_number, -4),
-                'card_type' => detect_card_type($card_number)
-            ]
-        ];
-    } else {
-        return [
-            'success' => false,
-            'message' => 'Credit card payment failed. Please try again or use a different payment method.',
-            'transaction_id' => null
-        ];
-    }
+    return $result;
 }
 
 /**
  * Process PayPal Payment
  */
 function process_paypal_payment($amount, $order_data, $user_data, $payment_details = []) {
-    // In a real implementation, you would:
-    // 1. Integrate with PayPal's API
-    // 2. Create a payment and redirect the user to PayPal's site
-    // 3. Handle the callback when the user completes payment
-    
     // Get PayPal email
     $paypal_email = $payment_details['email'] ?? $user_data['email'] ?? 'Not provided';
     
@@ -165,39 +174,25 @@ function process_paypal_payment($amount, $order_data, $user_data, $payment_detai
     $success = true; // Simulate successful payment
     $transaction_id = 'PP-' . time() . '-' . substr(md5(uniqid()), 0, 8);
     
-    // Log additional details
-    $details = "PayPal Email: $paypal_email";
+    $result = [
+        'success' => $success,
+        'message' => $success ? 'PayPal payment initiated' : 'Failed to initialize PayPal payment',
+        'transaction_id' => $success ? $transaction_id : null,
+        'status' => 'pending',
+        'redirect_url' => 'https://www.paypal.com/checkoutnow', // This would be provided by PayPal API
+        'paypal_email' => $paypal_email
+    ];
     
     // Log the PayPal payment attempt
-    log_payment_attempt('paypal', $amount, $order_data['order_id'], $success, $details);
+    log_payment_attempt($order_data['order_id'], 'paypal', $amount, $result);
     
-    if ($success) {
-        return [
-            'success' => true,
-            'message' => 'PayPal payment initiated',
-            'transaction_id' => $transaction_id,
-            'redirect_url' => 'https://www.paypal.com/checkoutnow', // This would be provided by PayPal API
-            'status' => 'pending',
-            'paypal_email' => $paypal_email
-        ];
-    } else {
-        return [
-            'success' => false,
-            'message' => 'Failed to initialize PayPal payment. Please try again.',
-            'transaction_id' => null
-        ];
-    }
+    return $result;
 }
 
 /**
  * Process Mobile Payment
  */
 function process_mobile_payment($amount, $order_data, $user_data, $payment_details = []) {
-    // In a real implementation, you would:
-    // 1. Integrate with mobile payment providers
-    // 2. Generate a payment request for the mobile payment app
-    // 3. Handle the callback when payment is completed
-    
     // Get mobile payment details
     $provider = $payment_details['provider'] ?? 'Not specified';
     $mobile_number = $payment_details['number'] ?? 'Not provided';
@@ -206,48 +201,29 @@ function process_mobile_payment($amount, $order_data, $user_data, $payment_detai
     $success = true; // Simulate successful payment
     $transaction_id = 'MP-' . time() . '-' . substr(md5(uniqid()), 0, 8);
     
-    // Log additional details
-    $details = "Provider: $provider, Mobile: $mobile_number";
+    $result = [
+        'success' => $success,
+        'message' => $success ? 'Mobile payment initiated' : 'Failed to initialize mobile payment',
+        'transaction_id' => $success ? $transaction_id : null,
+        'status' => 'pending',
+        'qr_code' => 'https://example.com/qr/' . $transaction_id, // This would be generated by the mobile payment API
+        'provider' => $provider,
+        'mobile' => $mobile_number
+    ];
     
     // Log the mobile payment attempt
-    log_payment_attempt('mobile_payment', $amount, $order_data['order_id'], $success, $details);
+    log_payment_attempt($order_data['order_id'], 'mobile_payment', $amount, $result);
     
-    if ($success) {
-        return [
-            'success' => true,
-            'message' => 'Mobile payment initiated',
-            'transaction_id' => $transaction_id,
-            'qr_code' => 'https://example.com/qr/' . $transaction_id, // This would be generated by the mobile payment API
-            'status' => 'pending',
-            'provider' => $provider,
-            'mobile' => $mobile_number
-        ];
-    } else {
-        return [
-            'success' => false,
-            'message' => 'Failed to initialize mobile payment. Please try again.',
-            'transaction_id' => null
-        ];
-    }
+    return $result;
 }
 
 /**
  * Process Cryptocurrency Payment
  */
 function process_crypto_payment($amount, $order_data, $user_data, $payment_details = []) {
-    // In a real implementation, you would:
-    // 1. Integrate with a cryptocurrency payment processor
-    // 2. Generate a wallet address for payment
-    // 3. Monitor the blockchain for payment confirmation
-    
     // Get crypto payment details
     $currency = $payment_details['currency'] ?? 'btc';
     $wallet = $payment_details['wallet'] ?? 'Not provided';
-    
-    // This is a simulation for demonstration purposes
-    $success = true; // Simulate successful payment initiation
-    $transaction_id = 'CRYPTO-' . time() . '-' . substr(md5(uniqid()), 0, 8);
-    $wallet_address = '0x' . substr(md5(uniqid()), 0, 32); // Simulated crypto wallet address
     
     // Calculate equivalent amount in cryptocurrency (example with Bitcoin)
     $crypto_amount = $amount;
@@ -266,82 +242,73 @@ function process_crypto_payment($amount, $order_data, $user_data, $payment_detai
             break;
     }
     
-    // Log additional details
-    $details = "Currency: $currency, Customer Wallet: $wallet, Amount: $crypto_amount $currency";
+    // This is a simulation for demonstration purposes
+    $success = true; // Simulate successful payment initiation
+    $transaction_id = 'CRYPTO-' . time() . '-' . substr(md5(uniqid()), 0, 8);
+    $wallet_address = '0x' . substr(md5(uniqid()), 0, 32); // Simulated crypto wallet address
+    
+    $result = [
+        'success' => $success,
+        'message' => $success ? 'Cryptocurrency payment initiated' : 'Failed to initialize cryptocurrency payment',
+        'transaction_id' => $success ? $transaction_id : null,
+        'status' => 'pending',
+        'wallet_address' => $wallet_address,
+        'crypto_amount' => $crypto_amount,
+        'currency' => $currency,
+        'customer_wallet' => $wallet
+    ];
     
     // Log the crypto payment attempt
-    log_payment_attempt('crypto', $amount, $order_data['order_id'], $success, $details);
+    log_payment_attempt($order_data['order_id'], 'crypto', $amount, $result);
     
-    if ($success) {
-        return [
-            'success' => true,
-            'message' => 'Cryptocurrency payment initiated',
-            'transaction_id' => $transaction_id,
-            'wallet_address' => $wallet_address,
-            'crypto_amount' => $crypto_amount,
-            'currency' => $currency,
-            'status' => 'pending',
-            'customer_wallet' => $wallet
-        ];
-    } else {
-        return [
-            'success' => false,
-            'message' => 'Failed to initialize cryptocurrency payment. Please try again.',
-            'transaction_id' => null
-        ];
-    }
+    return $result;
 }
 
 /**
  * Log payment attempts for auditing and troubleshooting
+ * @return bool True if logging was successful, false otherwise
  */
-function log_payment_attempt($payment_method, $amount, $order_id, $success, $details = '') {
+function log_payment_attempt($order_id, $payment_method, $amount, $result) {
     global $conn;
     
-    // First, check if payment_logs table exists, if not create it
-    $check_table = "SHOW TABLES LIKE 'payment_logs'";
-    $table_result = mysqli_query($conn, $check_table);
-    
-    if (!$table_result || mysqli_num_rows($table_result) === 0) {
-        // Create payment_logs table
-        $create_table = "CREATE TABLE IF NOT EXISTS payment_logs (
-            log_id INT AUTO_INCREMENT PRIMARY KEY,
-            payment_method VARCHAR(50) NOT NULL,
-            amount DECIMAL(10,2) NOT NULL,
-            order_id INT NOT NULL,
-            status VARCHAR(50) NOT NULL,
-            details TEXT,
-            created_at DATETIME NOT NULL
-        )";
-        mysqli_query($conn, $create_table);
-    }
-    
-    // Check if payment_logs table has details column
-    $check_column = "SHOW COLUMNS FROM payment_logs LIKE 'details'";
-    $column_result = mysqli_query($conn, $check_column);
-    
-    // Only check mysqli_num_rows if query was successful
-    if ($column_result && mysqli_num_rows($column_result) === 0) {
-        // Add details column if it doesn't exist
-        $add_column = "ALTER TABLE payment_logs ADD COLUMN details TEXT";
-        mysqli_query($conn, $add_column);
-    }
-    
-    $query = "INSERT INTO payment_logs (payment_method, amount, order_id, status, details, created_at) 
-              VALUES (?, ?, ?, ?, ?, NOW())";
+    $query = "INSERT INTO payment_logs (
+        order_id, 
+        payment_method, 
+        amount, 
+        transaction_id, 
+        status, 
+        response_data, 
+        created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, NOW())";
     
     $stmt = mysqli_prepare($conn, $query);
-    $status = $success ? 'success' : 'failed';
     
-    if ($stmt) {
-        mysqli_stmt_bind_param($stmt, "sdiss", $payment_method, $amount, $order_id, $status, $details);
-        mysqli_stmt_execute($stmt);
-        mysqli_stmt_close($stmt);
-        return true;
-    } else {
-        error_log("Failed to log payment attempt: " . mysqli_error($conn));
+    if ($stmt === false) {
+        error_log("Error preparing payment log statement: " . mysqli_error($conn));
         return false;
     }
+    
+    $transaction_id = $result['transaction_id'] ?? null;
+    $status = $result['status'] ?? ($result['success'] ? 'completed' : 'failed');
+    $response_data = json_encode($result);
+    
+    mysqli_stmt_bind_param(
+        $stmt, 
+        "isdsss", 
+        $order_id, 
+        $payment_method, 
+        $amount, 
+        $transaction_id, 
+        $status, 
+        $response_data
+    );
+    
+    if (!mysqli_stmt_execute($stmt)) {
+        error_log("Error logging payment attempt: " . mysqli_stmt_error($stmt));
+        return false;
+    }
+    
+    return true;
 }
 
 /**

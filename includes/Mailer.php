@@ -127,6 +127,9 @@ class Mailer {
     private function getNotificationTemplate($message) {
         $siteUrl = Env::get('SITE_URL', 'http://localhost/AgriMarket');
         
+        // Convert newlines to <br> tags for the message
+        $message = str_replace("\n", "<br>", $message);
+        
         return '
         <!DOCTYPE html>
         <html>
@@ -192,7 +195,7 @@ class Mailer {
                 </div>
                 <div class="content">
                     <div class="message">
-                        ' . nl2br(htmlspecialchars($message)) . '
+                        ' . $message . '
                     </div>
                     <div style="text-align: center;">
                         <a href="' . $siteUrl . '" class="button">Visit AgriMarket</a>

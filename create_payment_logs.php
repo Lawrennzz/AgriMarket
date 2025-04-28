@@ -6,13 +6,21 @@ include 'config.php';
 $payment_logs_table = "
 CREATE TABLE IF NOT EXISTS payment_logs (
     log_id INT AUTO_INCREMENT PRIMARY KEY,
-    order_id INT,
+    order_id INT NOT NULL,
     payment_method VARCHAR(50) NOT NULL,
     amount DECIMAL(10,2) NOT NULL,
-    status VARCHAR(20) NOT NULL,
+    status ENUM('pending', 'processing', 'completed', 'failed', 'refunded') DEFAULT 'pending',
+    transaction_id VARCHAR(100),
+    subtotal DECIMAL(10,2),
+    tax DECIMAL(10,2),
+    shipping DECIMAL(10,2),
     details TEXT,
+    payment_details JSON,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (order_id) REFERENCES orders(order_id) ON DELETE CASCADE
+    FOREIGN KEY (order_id) REFERENCES orders(order_id) ON DELETE CASCADE,
+    INDEX idx_payment_logs_order_id (order_id),
+    INDEX idx_payment_logs_status (status),
+    INDEX idx_payment_logs_transaction_id (transaction_id)
 )";
 
 // Execute the SQL
@@ -30,20 +38,61 @@ $row = mysqli_fetch_assoc($result);
 if ($row['count'] == 0) {
     // Insert sample payment logs
     $sample_queries = [
-        "INSERT INTO payment_logs (order_id, payment_method, amount, status, details) 
-         SELECT order_id, payment_method, total, payment_status, 'Initial payment record' 
-         FROM orders 
-         WHERE payment_method IS NOT NULL AND payment_status IS NOT NULL",
+        // Insert from orders with payment info
+        "INSERT INTO payment_logs (
+            order_id, 
+            payment_method, 
+            amount, 
+            status, 
+            transaction_id,
+            subtotal,
+            tax,
+            shipping,
+            details,
+            payment_details
+        ) 
+        SELECT 
+            order_id, 
+            payment_method, 
+            total as amount, 
+            COALESCE(payment_status, 'pending') as status,
+            transaction_id,
+            subtotal,
+            tax,
+            shipping,
+            'Initial payment record',
+            JSON_OBJECT(
+                'payment_method', payment_method,
+                'shipping_address', shipping_address
+            ) as payment_details
+        FROM orders 
+        WHERE payment_method IS NOT NULL",
          
-        "INSERT INTO payment_logs (order_id, payment_method, amount, status, details)
-         SELECT o.order_id, 
-                COALESCE(o.payment_method, JSON_UNQUOTE(JSON_EXTRACT(o.shipping_address, '$.payment_method'))), 
-                o.total, 
-                COALESCE(o.payment_status, 'pending'), 
-                'Generated from order data'
-         FROM orders o
-         WHERE o.payment_method IS NULL AND JSON_EXTRACT(o.shipping_address, '$.payment_method') IS NOT NULL
-         AND NOT EXISTS (SELECT 1 FROM payment_logs pl WHERE pl.order_id = o.order_id)"
+        // Insert from orders with payment method in shipping_address
+        "INSERT INTO payment_logs (
+            order_id, 
+            payment_method, 
+            amount, 
+            status,
+            subtotal,
+            tax,
+            shipping,
+            details,
+            payment_details
+        )
+        SELECT 
+            o.order_id, 
+            JSON_UNQUOTE(JSON_EXTRACT(o.shipping_address, '$.payment_method')) as payment_method, 
+            o.total as amount, 
+            COALESCE(o.payment_status, 'pending') as status,
+            o.subtotal,
+            o.tax,
+            o.shipping,
+            'Generated from order shipping_address data',
+            o.shipping_address as payment_details
+        FROM orders o
+        WHERE JSON_EXTRACT(o.shipping_address, '$.payment_method') IS NOT NULL
+        AND NOT EXISTS (SELECT 1 FROM payment_logs pl WHERE pl.order_id = o.order_id)"
     ];
     
     $success = true;
@@ -67,23 +116,49 @@ if ($row['count'] == 0) {
     echo "<br>Payment logs table already has data";
 }
 
-// Update payment_processor.php to ensure it logs to payment_logs
-$log_function_check = "
-SELECT COUNT(*) as count 
-FROM information_schema.routines 
-WHERE routine_name = 'log_payment_attempt' 
-AND routine_type = 'FUNCTION'
-AND routine_schema = DATABASE()";
+// Create function to log payment attempts if it doesn't exist
+$create_log_function = "
+CREATE FUNCTION IF NOT EXISTS log_payment_attempt(
+    p_order_id INT,
+    p_payment_method VARCHAR(50),
+    p_amount DECIMAL(10,2),
+    p_status VARCHAR(20),
+    p_transaction_id VARCHAR(100),
+    p_details TEXT,
+    p_payment_details JSON
+) RETURNS INT
+DETERMINISTIC
+BEGIN
+    INSERT INTO payment_logs (
+        order_id,
+        payment_method,
+        amount,
+        status,
+        transaction_id,
+        details,
+        payment_details,
+        created_at
+    ) VALUES (
+        p_order_id,
+        p_payment_method,
+        p_amount,
+        p_status,
+        p_transaction_id,
+        p_details,
+        p_payment_details,
+        CURRENT_TIMESTAMP
+    );
+    
+    RETURN LAST_INSERT_ID();
+END;
+";
 
-$log_function_result = mysqli_query($conn, $log_function_check);
-if (!$log_function_result) {
-    echo "<br>Error checking log_payment_attempt function: " . mysqli_error($conn);
+if (mysqli_multi_query($conn, $create_log_function)) {
+    echo "<br>Log payment attempt function created or updated successfully";
 } else {
-    $log_function_row = mysqli_fetch_assoc($log_function_result);
-    if ($log_function_row['count'] == 0) {
-        echo "<br>The log_payment_attempt function is handled in PHP code, not as a MySQL function. Make sure the payment_processor.php file includes code to log to payment_logs table.";
-    }
+    echo "<br>Error creating log function: " . mysqli_error($conn);
 }
 
-echo "<br><br>Done! You can now <a href='orders.php'>go back to orders</a> or <a href='index.php'>return home</a>.";
+// Close the connection
+mysqli_close($conn);
 ?> 

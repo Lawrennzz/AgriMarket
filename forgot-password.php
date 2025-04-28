@@ -53,11 +53,14 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             // Send verification code via email
             $mailer = new Mailer();
             $email_subject = "Password Reset Verification Code - AgriMarket";
-            $email_message = "Hello " . htmlspecialchars($user['name']) . ",<br><br>";
-            $email_message .= "You have requested to reset your password. Here is your verification code:<br><br>";
-            $email_message .= "<h2 style='text-align: center; color: #4CAF50;'>" . $verification_code . "</h2><br>";
-            $email_message .= "If you did not request this password reset, please ignore this email.<br><br>";
-            $email_message .= "Best regards,<br>AgriMarket Team";
+            $email_message = "Hello " . $user['name'] . ",\n\n";
+            $email_message .= "You have requested to reset your password. Here is your verification code:\n\n";
+            $email_message .= "<div style='text-align: center; margin: 20px 0;'>";
+            $email_message .= "<span style='font-size: 24px; color: #4CAF50; font-weight: bold; padding: 10px 20px; border: 2px solid #4CAF50; border-radius: 5px;'>";
+            $email_message .= $verification_code;
+            $email_message .= "</span></div>\n\n";
+            $email_message .= "If you did not request this password reset, please ignore this email.\n\n";
+            $email_message .= "Best regards,\nAgriMarket Team";
 
             if ($mailer->sendNotification($user['email'], $email_subject, $email_message, $user['name'])) {
                 $_SESSION['step'] = 3;

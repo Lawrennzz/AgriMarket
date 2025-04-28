@@ -11,6 +11,19 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'staff') {
 
 $staff_id = $_SESSION['user_id'];
 
+// Get success and error messages
+$success_message = '';
+$error_message = '';
+
+if (isset($_SESSION['success_message'])) {
+    $success_message = $_SESSION['success_message'];
+    unset($_SESSION['success_message']); // Clear the message after displaying
+}
+
+if (isset($_GET['error'])) {
+    $error_message = $_GET['error'];
+}
+
 // Handle search and filtering
 $search = isset($_GET['search']) ? $_GET['search'] : '';
 $category = isset($_GET['category']) ? $_GET['category'] : '';
@@ -33,7 +46,7 @@ $query = "
     FROM products p
     LEFT JOIN categories c ON p.category_id = c.category_id
     LEFT JOIN users v ON p.vendor_id = v.user_id
-    WHERE 1=1
+    WHERE p.deleted_at IS NULL
 ";
 
 // Add search condition
@@ -63,7 +76,7 @@ $count_query = "
     FROM products p
     LEFT JOIN categories c ON p.category_id = c.category_id
     LEFT JOIN users v ON p.vendor_id = v.user_id
-    WHERE 1=1
+    WHERE p.deleted_at IS NULL
 ";
 
 // Add search condition to count query
@@ -452,12 +465,43 @@ $page_title = "View Products";
                 overflow-x: auto;
             }
         }
+        
+        .alert {
+            padding: 15px;
+            margin-bottom: 20px;
+            border: 1px solid transparent;
+            border-radius: 4px;
+        }
+        
+        .alert-success {
+            color: #155724;
+            background-color: #d4edda;
+            border-color: #c3e6cb;
+        }
+        
+        .alert-danger {
+            color: #721c24;
+            background-color: #f8d7da;
+            border-color: #f5c6cb;
+        }
     </style>
 </head>
 <body>
     <?php include 'staff_sidebar.php'; ?>
     
     <div class="main-content">
+        <?php if (!empty($success_message)): ?>
+            <div class="alert alert-success">
+                <?php echo htmlspecialchars($success_message); ?>
+            </div>
+        <?php endif; ?>
+        
+        <?php if (!empty($error_message)): ?>
+            <div class="alert alert-danger">
+                <?php echo htmlspecialchars($error_message); ?>
+            </div>
+        <?php endif; ?>
+        
         <div class="page-header">
             <h1 class="page-title">Products</h1>
             <a href="add_product.php" class="action-button">

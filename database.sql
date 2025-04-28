@@ -148,16 +148,24 @@ CREATE TABLE notifications (
 );
 
 -- Analytics
+DROP TABLE IF EXISTS analytics;
 CREATE TABLE analytics (
-    analytic_id INT AUTO_INCREMENT PRIMARY KEY,
-    type ENUM('search', 'visit', 'order') NOT NULL,
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    type VARCHAR(50) NOT NULL,
     product_id INT,
+    session_id VARCHAR(100),
     user_id INT,
+    user_ip VARCHAR(45),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     count INT DEFAULT 1,
-    recorded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY unique_activity (type, product_id, session_id),
+    INDEX (type),
+    INDEX (product_id),
+    INDEX (user_id),
+    INDEX (created_at),
     FOREIGN KEY (product_id) REFERENCES products(product_id) ON DELETE SET NULL,
     FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE SET NULL
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- Wishlist
 CREATE TABLE wishlist (
@@ -637,12 +645,16 @@ CREATE TABLE analytics (
     session_id VARCHAR(100),
     user_id INT,
     user_ip VARCHAR(45),
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    count INT DEFAULT 1,
+    UNIQUE KEY unique_activity (type, product_id, session_id),
     INDEX (type),
     INDEX (product_id),
     INDEX (user_id),
-    INDEX (created_at)
-);
+    INDEX (created_at),
+    FOREIGN KEY (product_id) REFERENCES products(product_id) ON DELETE SET NULL,
+    FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- Check if product_search_logs table exists and create it if not
 DROP TABLE IF EXISTS product_search_logs;
@@ -734,9 +746,17 @@ CREATE TRIGGER after_order_insert
 AFTER INSERT ON order_items
 FOR EACH ROW
 BEGIN
-    INSERT INTO analytics (type, product_id, count)
-    VALUES ('order', NEW.product_id, NEW.quantity)
+    INSERT INTO analytics (type, product_id, count, created_at)
+    VALUES ('order', NEW.product_id, NEW.quantity, NOW())
     ON DUPLICATE KEY UPDATE count = count + NEW.quantity;
+    
+    -- Update product stats
+    INSERT INTO product_stats (product_id, total_sales, total_revenue, last_sale_date)
+    VALUES (NEW.product_id, NEW.quantity, NEW.quantity * NEW.price, NOW())
+    ON DUPLICATE KEY UPDATE 
+        total_sales = total_sales + NEW.quantity,
+        total_revenue = total_revenue + (NEW.quantity * NEW.price),
+        last_sale_date = NOW();
 END//
 
 DELIMITER ;

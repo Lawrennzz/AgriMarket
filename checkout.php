@@ -33,7 +33,7 @@ if ($user_stmt) {
 
 // Fetch cart items
 $cart_query = "SELECT c.cart_id, c.product_id, c.quantity, 
-               p.name, p.price, p.image_url, p.stock
+               p.name, p.price, p.image_url, p.stock, p.vendor_id, p.category_id
                FROM cart c
                JOIN products p ON c.product_id = p.product_id
                WHERE c.user_id = ?
@@ -47,14 +47,24 @@ if ($cart_stmt) {
 
     // Calculate cart totals
     while ($item = mysqli_fetch_assoc($cart_result)) {
-        $cart_items[] = $item;
-    $subtotal += $item['price'] * $item['quantity'];
+        $cart_items[] = [
+            'cart_id' => $item['cart_id'],
+            'product_id' => $item['product_id'],
+            'quantity' => $item['quantity'],
+            'name' => $item['name'],
+            'price' => $item['price'],
+            'image_url' => $item['image_url'],
+            'stock' => $item['stock'],
+            'vendor_id' => $item['vendor_id'],
+            'category_id' => $item['category_id']
+        ];
+        $subtotal += $item['price'] * $item['quantity'];
         $item_count += $item['quantity'];
-}
+    }
 
     $shipping = $item_count > 0 ? 5.00 : 0; // Fixed shipping cost
     $tax = $subtotal * 0.05; // 5% tax
-$total = $subtotal + $shipping + $tax;
+    $total = $subtotal + $shipping + $tax;
 
     mysqli_stmt_close($cart_stmt);
 } else {
@@ -118,8 +128,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             require_once 'payment_processor.php';
             
             // Insert order
-            $order_query = "INSERT INTO orders (user_id, total, subtotal, shipping, tax, shipping_address, status, created_at) 
-                           VALUES (?, ?, ?, ?, ?, ?, 'pending', NOW())";
+            $order_query = "INSERT INTO orders (user_id, total, subtotal, shipping, tax, shipping_address, payment_method, status, created_at) 
+                           VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', NOW())";
             $order_stmt = mysqli_prepare($conn, $order_query);
             
             if ($order_stmt === false) {
@@ -133,10 +143,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'address' => $address,
                 'city' => $city,
                 'state' => $state,
-                'zip' => $zip,
-                'payment_method' => $payment_method
+                'zip' => $zip
             ]);
-            mysqli_stmt_bind_param($order_stmt, "idddss", $user_id, $total, $subtotal, $shipping, $tax, $shipping_address);
+            mysqli_stmt_bind_param($order_stmt, "idddsss", $user_id, $total, $subtotal, $shipping, $tax, $shipping_address, $payment_method);
             
             if (!mysqli_stmt_execute($order_stmt)) {
                 throw new Exception("Error inserting order: " . mysqli_stmt_error($order_stmt));
@@ -200,7 +209,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $transaction_id = $payment_result['transaction_id'] ?? null;
                 
                 // Update payment status
-                update_payment_status($order_id, $transaction_id, $payment_status, $payment_method);
+                $update_status_query = "UPDATE orders SET status = ?, transaction_id = ? WHERE order_id = ?";
+                $update_status_stmt = mysqli_prepare($conn, $update_status_query);
+                mysqli_stmt_bind_param($update_status_stmt, "ssi", $payment_status, $transaction_id, $order_id);
+                
+                if (!mysqli_stmt_execute($update_status_stmt)) {
+                    throw new Exception("Error updating order status: " . mysqli_stmt_error($update_status_stmt));
+                }
                 
                 // Track the order in analytics
                 if (file_exists('includes/track_analytics.php')) {
@@ -220,14 +235,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     }
                     
                     // Track the order placement
-                    track_order_placement($order_id, $order_items_for_analytics, $total);
+                    track_order_placement($order_id, $order_items_for_analytics);
                 }
                 
                 // Clear cart
                 $clear_cart_sql = "DELETE FROM cart WHERE user_id = ?";
                 $clear_cart_stmt = mysqli_prepare($conn, $clear_cart_sql);
                 mysqli_stmt_bind_param($clear_cart_stmt, "i", $user_id);
-                mysqli_stmt_execute($clear_cart_stmt);
+                
+                if (!mysqli_stmt_execute($clear_cart_stmt)) {
+                    throw new Exception("Error clearing cart: " . mysqli_stmt_error($clear_cart_stmt));
+                }
                 
                 // Create notification for user
                 $notification_query = "INSERT INTO notifications (user_id, message, type, created_at) 
@@ -235,84 +253,51 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $notification_stmt = mysqli_prepare($conn, $notification_query);
                 $message = "Your order #$order_id has been placed successfully and is being processed.";
                 mysqli_stmt_bind_param($notification_stmt, "is", $user_id, $message);
-                mysqli_stmt_execute($notification_stmt);
                 
-                // Send order confirmation email
-                try {
-                    require_once 'includes/Mailer.php';
-                    
-                    // Get user details
-                    $user_query = "SELECT name, email FROM users WHERE user_id = ?";
-                    $user_stmt = mysqli_prepare($conn, $user_query);
-                    mysqli_stmt_bind_param($user_stmt, "i", $user_id);
-                    mysqli_stmt_execute($user_stmt);
-                    $user_result = mysqli_stmt_get_result($user_stmt);
-                    $user_data = mysqli_fetch_assoc($user_result);
-                    
-                    // Get order details
-                    $order_query = "SELECT * FROM orders WHERE order_id = ?";
-                    $order_stmt = mysqli_prepare($conn, $order_query);
-                    mysqli_stmt_bind_param($order_stmt, "i", $order_id);
-                    mysqli_stmt_execute($order_stmt);
-                    $order_result = mysqli_stmt_get_result($order_stmt);
-                    $order_data = mysqli_fetch_assoc($order_result);
-                    
-                    // Get order items
-                    $items_query = "SELECT oi.*, p.name FROM order_items oi 
-                                   JOIN products p ON oi.product_id = p.product_id
-                                   WHERE oi.order_id = ?";
-                    $items_stmt = mysqli_prepare($conn, $items_query);
-                    mysqli_stmt_bind_param($items_stmt, "i", $order_id);
-                    mysqli_stmt_execute($items_stmt);
-                    $items_result = mysqli_stmt_get_result($items_stmt);
-                    
-                    $order_items = [];
-                    while ($item = mysqli_fetch_assoc($items_result)) {
-                        $order_items[] = $item;
-                    }
-                    
-                    // Send the confirmation email
-                    $mailer = new Mailer();
-                    $mailer->sendOrderConfirmation(
-                        $order_id,
-                        $user_data['email'],
-                        $user_data['name'],
-                        $order_data,
-                        $order_items
-                    );
-                } catch (Exception $e) {
-                    // Log the error but continue with the checkout process
-                    error_log("Failed to send order confirmation email: " . $e->getMessage());
+                if (!mysqli_stmt_execute($notification_stmt)) {
+                    throw new Exception("Error creating notification: " . mysqli_stmt_error($notification_stmt));
                 }
                 
+                // Commit the transaction
                 mysqli_commit($conn);
                 
                 // Handle special payment methods that need redirects
                 if ($payment_method == 'paypal' && isset($payment_result['redirect_url'])) {
-                    // Store redirect info in session
                     $_SESSION['payment_redirect'] = [
                         'order_id' => $order_id,
                         'url' => $payment_result['redirect_url']
                     ];
-                    
-                    // Redirect to PayPal
                     header("Location: " . $payment_result['redirect_url']);
                     exit();
                 }
                 
                 // For all other payment methods, go to confirmation
-            header("Location: order_confirmation.php?order_id=$order_id");
-            exit();
-        } else {
+                header("Location: order_confirmation.php?order_id=" . $order_id);
+                exit();
+            } else {
                 // Payment failed
                 mysqli_rollback($conn);
-                $errors[] = $payment_result['message'] ?? "Payment processing failed. Please try again.";
+                $_SESSION['checkout_error'] = $payment_result['message'] ?? "Payment processing failed. Please try again.";
+                header("Location: checkout.php");
+                exit();
             }
         } catch (Exception $e) {
             mysqli_rollback($conn);
-            $errors[] = "An error occurred while processing your order: " . $e->getMessage();
+            $_SESSION['checkout_error'] = "An error occurred while processing your order: " . $e->getMessage();
+            header("Location: checkout.php");
+            exit();
         }
+    } else if (!empty($errors)) {
+        $_SESSION['checkout_error'] = implode("<br>", $errors);
+        header("Location: checkout.php");
+        exit();
     }
+}
+
+// Display any session errors at the top of the form
+if (isset($_SESSION['checkout_error'])) {
+    $errors[] = $_SESSION['checkout_error'];
+    unset($_SESSION['checkout_error']);
 }
 ?>
 
@@ -621,8 +606,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <li><?php echo htmlspecialchars($error); ?></li>
                 <?php endforeach; ?>
             </ul>
-                    </div>
-                <?php endif; ?>
+        </div>
+        <?php endif; ?>
 
         <div class="checkout-content">
             <form class="checkout-form" method="post" action="">
@@ -924,7 +909,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 showPaymentForm(paymentType);
             }
         });
-        });
+    });
     </script>
 </body>
 </html>

@@ -66,20 +66,29 @@ $mostSearchedProducts = executeQuery($conn, $searchQuery, "ss", [$start_date, $e
 $viewQuery = "SELECT 
     p.name, 
     p.product_id,
-    COUNT(*) as view_count
+    COUNT(pv.id) as view_count,
+    MAX(pv.visit_date) as last_view_date
 FROM 
     products p
-    INNER JOIN analytics a ON a.product_id = p.product_id
-WHERE 
-    a.type = 'visit' 
-    AND DATE(a.created_at) BETWEEN ? AND ?
+    LEFT JOIN product_visits pv ON p.product_id = pv.product_id
 GROUP BY 
     p.product_id, p.name
 ORDER BY 
     view_count DESC
 LIMIT 10";
 
-$mostViewedProducts = executeQuery($conn, $viewQuery, "ss", [$start_date, $end_date]);
+// Debug logging
+error_log("View Query: " . $viewQuery);
+$mostViewedProducts = executeQuery($conn, $viewQuery, "", []);
+error_log("Most Viewed Products Count: " . count($mostViewedProducts));
+if (empty($mostViewedProducts)) {
+    error_log("MySQL Error: " . mysqli_error($conn));
+}
+
+// Debug the data
+if (!empty($mostViewedProducts)) {
+    error_log("First product data: " . print_r($mostViewedProducts[0], true));
+}
 
 // Most ordered products
 $orders_query = "
@@ -109,6 +118,12 @@ $most_ordered = executeQuery($conn, $orders_query, "ss", [$start_date, $end_date
 error_log("Search Products Count: " . count($mostSearchedProducts));
 error_log("Viewed Products Count: " . count($mostViewedProducts));
 error_log("Ordered Products Count: " . count($most_ordered));
+
+$searches = mysqli_query($conn, "SELECT COUNT(*) as count FROM analytics WHERE type='search'");
+$popular_products = mysqli_query($conn, "SELECT p.name, ps.total_views as count 
+                                       FROM product_stats ps 
+                                       JOIN products p ON ps.product_id = p.product_id 
+                                       ORDER BY ps.total_views DESC LIMIT 5");
 ?>
 
 <!DOCTYPE html>
@@ -248,6 +263,7 @@ error_log("Ordered Products Count: " . count($most_ordered));
                             <tr>
                                 <th>Product Name</th>
                                 <th>View Count</th>
+                                <th>Last Viewed</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -255,12 +271,13 @@ error_log("Ordered Products Count: " . count($most_ordered));
                                 <?php foreach ($mostViewedProducts as $product): ?>
                                 <tr>
                                     <td><?php echo htmlspecialchars($product['name']); ?></td>
-                                    <td><?php echo $product['view_count']; ?></td>
+                                    <td><?php echo number_format($product['view_count']); ?></td>
+                                    <td><?php echo $product['last_view_date'] ? date('Y-m-d H:i', strtotime($product['last_view_date'])) : 'Never'; ?></td>
                                 </tr>
                             <?php endforeach; ?>
                             <?php else: ?>
                                 <tr>
-                                    <td colspan="2" class="text-center">No view data available for the selected period.</td>
+                                    <td colspan="3" class="text-center">No view data available for the selected period.</td>
                                 </tr>
                             <?php endif; ?>
                         </tbody>
