@@ -1,34 +1,64 @@
-## Wedding E‑Commerce (AgriMarket fork)
+## AgriMarket Solutions - Agricultural E-Commerce Platform
 
-This repository contains a PHP-based Wedding E‑Commerce website intended for wedding planner vendors and couples. Vendors can list products and services (attire, flowers, paper goods, favors and gifts, venue, photographers, printing, rings, etc.). Couples can discover vendors/products, compare options, book appointments, and place orders efficiently for their wedding day.
+This repository contains a PHP-based e-commerce platform tailored for farmers and multi-vendors. The platform provides a digital marketplace where farmers can efficiently market their agricultural products, including livestock (cattle, poultry, hogs, etc.), crops (corn, soybeans, hay, etc.), edible forestry products (almonds, walnuts, etc.), dairy (milk products), fish farming, and miscellaneous products (honey, etc.). The platform also serves as an agricultural knowledge hub, offering insights into modern farming techniques, comparative market pricing, and streamlined agricultural workflows.
 
-### Project description (as provided)
-- Login/logout
-- Manage customers
-- Products specifications, categories, packages, prices, etc.
-- Manage products
-- Vendors information, services offered, etc.
-- Manage vendors
-- Manage staffs
-- Manage appointments
-- Manage booking and/or orders, shopping cart, payment, delivery, customer’s past orders, etc.
-- Products and vendor’s rating
-- Customer’s and appointment notifications
-- Manage account and system setting
-- Reports (for vendors/customers):
-  - The most searched products and/or vendors
-  - The most popularly visited product pages
-  - The most popularly ordered products
-  - Sales (weekly/monthly/annually/quarterly)
-- Additional features may be specified with justification
+### Project Features
 
-### Development requirements
-- Technologies: HTML, CSS, JavaScript, PHP (server-side only), and SQL database.
-- Use variables/constants, conditionals, loops, functions, arrays/multidimensional arrays, string processing, files/directories, and object‑oriented programming.
-- No external frameworks, template generators, or code scaffolding; plain PHP only.
-- Media from external sources must include references.
-- All web pages must include a footer stating the business is fictitious and part of a university course.
-- All pages must be linked together.
+**1. User Authentication & Security:**
+- Login/logout functionality for admin, vendor, customer, and staff with role-based access control.
+
+**2. Customer Management:**
+- User registration with profile management.
+- Order history and saved preferences.
+
+**3. Product Management:**
+- Product listings with detailed specifications, categories, packaging, and pricing.
+- Search and filter options for products.
+- Bulk upload capability for vendors.
+
+**4. Vendor Management:**
+- Vendor registration with profile and service listings.
+- Product and service management panel.
+- Subscription-based vendor tiers.
+
+**5. Staff Management:**
+- Admin dashboard for managing website staff.
+- Task assignment and performance tracking.
+
+**6. Order & Shopping Cart System:**
+- Shopping cart with product comparison feature.
+- Multiple payment gateway integrations (credit/debit cards, mobile payments, bank transfers).
+- Real-time order tracking and delivery management.
+- Customer order history and reordering features.
+
+**7. Ratings & Reviews:**
+- Product and vendor rating system.
+- Customer feedback and comment moderation.
+
+**8. Notifications & Alerts:**
+- Email/SMS/Push notifications for orders, and promotional updates.
+- Low-stock alerts for vendors.
+
+**9. Account & System Settings:**
+- Profile management for customers and vendors.
+
+**10. Reports & Analytics:**
+- Reports on the most searched products and vendors.
+- Insights into most visited product pages.
+- Data on the most popularly ordered products.
+- Sales reports (weekly, monthly, quarterly, annually).
+
+### Development Requirements
+
+The e-commerce website development must cover the following:
+- **Technologies:** HTML, CSS, JavaScript, PHP, XHTML and/or HTML5.
+- **Programming Elements:** The website must include appropriate variables and constants declaration, conditional and looping control structures, functions, one-dimension array, multidimensional array, string processing, files, directories, and object-oriented programming.
+- **Database:** The data on the server should be stored in an SQL database.
+- **Server-Side Scripts:** Server-side scripts need to be written only in PHP.
+- **Restrictions:** External libraries and frameworks as well as existing e-commerce and automatic code generators or template-based designers are not permitted.
+- **Media Attribution:** Media from external sources are permitted to use but must include references.
+- **Footer Requirement:** All web pages must contain a footer stating that the business is fictitious and part of a university course.
+- **Navigation:** All the pages on the website must be linked together.
 
 ## Repository structure (what we do in each folder)
 
@@ -46,17 +76,35 @@ This repository contains a PHP-based Wedding E‑Commerce website intended for w
 
 ## How the repo maps to the requirements
 
-- Login/logout: `login.php`, `logout.php`, auth utilities in `includes/`.
-- Manage customers: `manage_users.php`, `profile.php`, supporting `classes/` and `includes/`.
-- Products specs/categories/prices & Manage products: `products.php`, `product.php`, `product_details.php`, `manage_products.php`, classes in `classes/`, templates in `templates/`.
-- Vendor info & Manage vendors: `vendors.php`, `vendor.php`, `manage_vendors.php`, vendor dashboards in `admin/`.
-- Manage staffs: `manage_staff.php`, `edit_staff.php` with related includes/classes.
-- Appointments: `manage_orders.php` (and appointment pages if added), notifications in `notifications.php`.
-- Orders/cart/payment/delivery/history: `cart.php`, `checkout.php`, `orders.php`, `my_orders.php`, `payment_processor.php`, `order_details.php`, `print_receipt.php`.
-- Ratings: `add_review.php`, `reviews.php`, `manage_reviews.php`.
-- Notifications: `notifications.php`, plus supporting includes.
-- Account & system settings: `settings.php`, `update_settings.php`, `includes/` helpers.
-- Reports: `admin/reports.php`, `admin/analytics_dashboard.php`, `admin/most_viewed_products.php`, `vendor_reports.php`, `view_reports.php`, plus SQL in `sql/` for tracking searches, views, orders, and sales.
+**1. User Authentication & Security:**
+- `login.php`, `logout.php`, authentication utilities in `includes/`, role-based access control across admin/vendor/customer/staff pages.
+
+**2. Customer Management:**
+- `register.php`, `manage_users.php`, `profile.php`, order history in `my_orders.php`, saved preferences (wishlist in `wishlist.php`).
+
+**3. Product Management:**
+- `products.php`, `product.php`, `product_details.php`, `manage_products.php`, `product_upload.php`, search/filter in `search.php`, bulk upload capabilities. Classes in `classes/`, templates in `templates/`.
+
+**4. Vendor Management:**
+- `vendor_register.php`, `vendors.php`, `vendor.php`, `vendor_dashboard.php`, `vendor_profile.php`, `manage_vendors.php`, vendor management panels.
+
+**5. Staff Management:**
+- `manage_staff.php`, `add_staff.php`, `edit_staff.php`, `staff_dashboard.php`, `my_performance.php`, `my_tasks.php`, task assignment and tracking.
+
+**6. Order & Shopping Cart System:**
+- `cart.php`, `compare_products.php`, `checkout.php`, `payment_processor.php`, `orders.php`, `manage_orders.php`, `my_orders.php`, `order_details.php`, `order_confirmation.php`, `print_receipt.php`, real-time order tracking.
+
+**7. Ratings & Reviews:**
+- `add_review.php`, `add-review.php`, `reviews.php`, `manage_reviews.php`, rating systems for products and vendors.
+
+**8. Notifications & Alerts:**
+- `notifications.php`, email/SMS notifications (via `test_email.php`, `test_order_email.php`), low-stock alerts for vendors.
+
+**9. Account & System Settings:**
+- `settings.php`, `update_settings.php`, `profile.php`, profile management for customers and vendors.
+
+**10. Reports & Analytics:**
+- `admin/reports.php`, `admin/analytics_dashboard.php`, `admin/most_viewed_products.php`, `vendor_reports.php`, `view_reports.php`, `vendor_advanced_analytics.php`, SQL tracking in `sql/` for searches, views, orders, and sales (weekly/monthly/quarterly/annually).
 
 ## Setup
 
@@ -90,6 +138,14 @@ git clone https://github.com/Lawrennzz/AgriMarket.git
 ## Reports and analytics
 
 - Product searches, views, orders, and sales summaries are supported via SQL objects and admin/vendor pages. See `admin/analytics_dashboard.php`, `admin/most_viewed_products.php`, `admin/reports.php`, and the `sql/` folder.
+
+## Knowledge Hub
+
+The platform includes agricultural knowledge resources:
+- `knowledge_hub.php`: Agricultural knowledge and resources
+- `farming_techniques.php`: Modern farming techniques and best practices
+- `market_pricing.php`: Comparative market pricing information
+- `agricultural_workflows.php`: Streamlined agricultural workflows and guides
 
 ## Attribution
 
