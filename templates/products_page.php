@@ -492,7 +492,7 @@
                                         <i class="fas fa-balance-scale"></i>
                                     </a>
                                 <?php endif; ?>
-                                <a href="product.php?id=<?php echo $product['product_id']; ?>" class="view-details">
+                                <a href="product.php?id=<?php echo $product['product_id']; ?>" class="view-details product-link" data-product-id="<?php echo $product['product_id']; ?>">
                                     <i class="fas fa-eye"></i>
                                 </a>
                             </div>
@@ -512,16 +512,18 @@
 
     <?php include 'footer.php'; ?>
 
+    <script src="assets/js/jquery.min.js"></script>
+    <script src="assets/js/product-tracking.js"></script>
+    
     <script>
     // Cart functionality 
     function addToCart(productId) {
-        fetch('cart.php', {
+        fetch('add_to_cart.php', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/x-www-form-urlencoded',
-                'X-Requested-With': 'XMLHttpRequest'
             },
-            body: `product_id=${productId}&action=add`
+            body: 'product_id=' + productId
         })
         .then(response => response.json())
         .then(data => {
@@ -533,9 +535,14 @@
                 }
                 // Show success message
                 alert('Product added to cart!');
+            } else {
+                alert(data.message || 'Error adding to cart');
             }
         })
-        .catch(error => console.error('Error:', error));
+        .catch(error => {
+            console.error('Error:', error);
+            alert('An error occurred. Please try again.');
+        });
     }
 
     // Function to clear search input

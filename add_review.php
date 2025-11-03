@@ -32,7 +32,7 @@ $sql = "SELECT o.*, p.name as product_name, p.image_url
         FROM orders o 
         JOIN order_items oi ON o.order_id = oi.order_id 
         JOIN products p ON oi.product_id = p.product_id 
-        WHERE o.order_id = ? AND o.user_id = ? AND oi.product_id = ? AND o.status = 'delivered'";
+        WHERE o.order_id = ? AND o.user_id = ? AND oi.product_id = ?";
 
 $stmt = $db->prepare($sql);
 if (!$stmt) {

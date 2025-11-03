@@ -489,7 +489,7 @@ if ($categories_result) {
                                         <i class="fas fa-cart-plus"></i> Add to Cart
                                     </button>
                                 <?php endif; ?>
-                                <a href="product.php?id=<?php echo $product['product_id']; ?>" class="view-details">
+                                <a href="product.php?id=<?php echo $product['product_id']; ?>" class="view-details product-link" data-product-id="<?php echo $product['product_id']; ?>">
                                     <i class="fas fa-eye"></i>
                                 </a>
                             </div>
@@ -626,6 +626,24 @@ if ($categories_result) {
             alert('An error occurred. Please try again.');
         });
     }
+    
+    function trackProductView(productId, source) {
+        // Send analytics data via AJAX
+        fetch('track_view.php', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            body: `product_id=${productId}&source=${source}`
+        })
+        .catch(error => {
+            console.error('Error tracking view:', error);
+        });
+    }
     </script>
+    <!-- Add our tracking scripts -->
+    <script src="assets/js/jquery.min.js"></script>
+    <script src="assets/js/product-tracking.js"></script>
 </body>
 </html>

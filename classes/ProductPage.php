@@ -172,13 +172,14 @@ class ProductPage {
     }
     
     private function logProductView() {
-        // Include the functions file if not already included
-        if (!function_exists('logProductView')) {
-            require_once dirname(__DIR__) . '/includes/functions.php';
+        // Include the track_analytics file
+        if (!function_exists('track_product_view_click')) {
+            require_once dirname(__DIR__) . '/includes/track_analytics.php';
         }
         
-        // Log product visit to analytics database only
-        logProductView($this->conn, $this->product_id);
+        // Track the product view click with source information
+        $source = isset($_SERVER['HTTP_REFERER']) ? $_SERVER['HTTP_REFERER'] : 'direct';
+        track_product_view_click($this->product_id, $source);
     }
     
     public function getProduct() {

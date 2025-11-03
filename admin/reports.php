@@ -63,32 +63,23 @@ LIMIT 10";
 $mostSearchedProducts = executeQuery($conn, $searchQuery, "ss", [$start_date, $end_date]);
 
 // Get most viewed products
-$viewQuery = "SELECT 
-    p.name, 
-    p.product_id,
-    COUNT(pv.id) as view_count,
-    MAX(pv.visit_date) as last_view_date
-FROM 
-    products p
-    LEFT JOIN product_visits pv ON p.product_id = pv.product_id
-GROUP BY 
-    p.product_id, p.name
-ORDER BY 
-    view_count DESC
-LIMIT 10";
+$viewQuery = "
+    SELECT 
+        p.name, 
+        p.product_id,
+        COALESCE(ps.total_view_clicks, 0) as total_views,
+        COALESCE(ps.daily_views, 0) as daily_views,
+        COALESCE(ps.weekly_views, 0) as weekly_views,
+        COALESCE(ps.monthly_views, 0) as monthly_views,
+        ps.last_view_click_date as last_view_date
+    FROM products p
+    LEFT JOIN product_stats ps ON p.product_id = ps.product_id
+    WHERE (ps.total_view_clicks > 0 OR ps.total_views > 0)
+    ORDER BY 
+        COALESCE(ps.total_view_clicks, 0) + COALESCE(ps.total_views, 0) DESC
+    LIMIT 10";
 
-// Debug logging
-error_log("View Query: " . $viewQuery);
 $mostViewedProducts = executeQuery($conn, $viewQuery, "", []);
-error_log("Most Viewed Products Count: " . count($mostViewedProducts));
-if (empty($mostViewedProducts)) {
-    error_log("MySQL Error: " . mysqli_error($conn));
-}
-
-// Debug the data
-if (!empty($mostViewedProducts)) {
-    error_log("First product data: " . print_r($mostViewedProducts[0], true));
-}
 
 // Most ordered products
 $orders_query = "
@@ -262,7 +253,10 @@ $popular_products = mysqli_query($conn, "SELECT p.name, ps.total_views as count
                         <thead>
                             <tr>
                                 <th>Product Name</th>
-                                <th>View Count</th>
+                                <th>Total Views</th>
+                                <th>Daily Views</th>
+                                <th>Weekly Views</th>
+                                <th>Monthly Views</th>
                                 <th>Last Viewed</th>
                             </tr>
                         </thead>
@@ -271,21 +265,24 @@ $popular_products = mysqli_query($conn, "SELECT p.name, ps.total_views as count
                                 <?php foreach ($mostViewedProducts as $product): ?>
                                 <tr>
                                     <td><?php echo htmlspecialchars($product['name']); ?></td>
-                                    <td><?php echo number_format($product['view_count']); ?></td>
+                                    <td><?php echo number_format($product['total_views']); ?></td>
+                                    <td><?php echo number_format($product['daily_views']); ?></td>
+                                    <td><?php echo number_format($product['weekly_views']); ?></td>
+                                    <td><?php echo number_format($product['monthly_views']); ?></td>
                                     <td><?php echo $product['last_view_date'] ? date('Y-m-d H:i', strtotime($product['last_view_date'])) : 'Never'; ?></td>
                                 </tr>
                             <?php endforeach; ?>
                             <?php else: ?>
                                 <tr>
-                                    <td colspan="3" class="text-center">No view data available for the selected period.</td>
+                                    <td colspan="6" class="text-center">No view data available for the selected period.</td>
                                 </tr>
                             <?php endif; ?>
                         </tbody>
                     </table>
                 </div>
             </div>
-            </div>
-            
+        </div>
+        
         <!-- Most Ordered Products -->
         <div class="card">
             <div class="card-header">

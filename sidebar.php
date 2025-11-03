@@ -72,14 +72,17 @@ $admin_prefix = $in_admin_dir ? '../' : '';
         </li>
         
         <!-- Analytics Section -->
-        <li class="sidebar-dropdown <?php echo in_array($current_page, ['reports.php', 'advanced_reports.php', 'check_analytics.php', 'seed_analytics_data.php']) ? 'active' : ''; ?>">
+        <li class="sidebar-dropdown <?php echo in_array($current_page, ['reports.php', 'advanced_reports.php', 'check_analytics.php', 'seed_analytics_data.php', 'update_product_tracking.php']) ? 'active' : ''; ?>">
             <a href="#"><i class="fas fa-chart-bar"></i> Analytics</a>
-            <ul class="sidebar-submenu" style="display: <?php echo in_array($current_page, ['reports.php', 'advanced_reports.php', 'check_analytics.php', 'seed_analytics_data.php']) ? 'block' : 'none'; ?>;">
+            <ul class="sidebar-submenu" style="display: <?php echo in_array($current_page, ['reports.php', 'advanced_reports.php', 'check_analytics.php', 'seed_analytics_data.php', 'update_product_tracking.php']) ? 'block' : 'none'; ?>;">
                 <li class="<?php echo $current_page === 'reports.php' ? 'active' : ''; ?>">
                     <a href="<?php echo $admin_prefix; ?>admin/reports.php"><i class="fas fa-file-alt"></i> Basic Reports</a>
                 </li>
                 <li class="<?php echo $current_page === 'advanced_reports.php' ? 'active' : ''; ?>">
                     <a href="<?php echo $admin_prefix; ?>admin/advanced_reports.php"><i class="fas fa-chart-line"></i> Advanced Analytics</a>
+                </li>
+                <li class="<?php echo $current_page === 'update_product_tracking.php' ? 'active' : ''; ?>">
+                    <a href="<?php echo $admin_prefix; ?>admin/update_product_tracking.php" class="analytics-action"><i class="fas fa-sync"></i> Fix Product Tracking</a>
                 </li>
             </ul>
         </li>

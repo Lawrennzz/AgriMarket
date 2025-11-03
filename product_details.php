@@ -34,11 +34,9 @@ if (isset($_GET['id']) && is_numeric($_GET['id'])) {
         if (mysqli_num_rows($result) > 0) {
             $product = mysqli_fetch_assoc($result);
             
-            // Track product view if analytics tracking is enabled
-            if (file_exists('includes/track_analytics.php')) {
-                require_once 'includes/track_analytics.php';
-                track_product_view($product_id, $product);
-            }
+            // Track product view using the new tracking system
+            require_once 'includes/product_view_tracker.php';
+            track_product_view($product_id, isset($_GET['source']) ? $_GET['source'] : 'direct_visit');
             
             // Get product reviews
             $reviews_query = "
@@ -812,6 +810,10 @@ $page_title = $product ? $product['name'] : "Product Not Found";
     </div>
     
     <?php include 'footer.php'; ?>
+    
+    <script src="assets/js/jquery.min.js"></script>
+    <script src="assets/js/product-tracking.js"></script>
+    <input type="hidden" id="current-product-id" value="<?php echo $product_id; ?>">
     
     <script>
         function decrementQuantity() {

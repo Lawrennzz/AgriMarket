@@ -8,6 +8,7 @@ if (session_status() === PHP_SESSION_NONE) {
 require_once 'includes/config.php';
 require_once 'includes/db_connection.php';
 require_once 'includes/functions.php';
+require_once 'includes/product_view_tracker.php';
 require_once 'classes/Database.php';
 require_once 'classes/ProductPage.php';
 
@@ -29,8 +30,9 @@ if ($product_id > 0) {
     $product = $stmt->get_result()->fetch_assoc();
     
     if ($product) {
-        // Log the product view
-        logProductView($conn, $product_id);
+        // Track the product view using the standard tracking function
+        $source = isset($_SERVER['HTTP_REFERER']) ? $_SERVER['HTTP_REFERER'] : 'direct';
+        track_product_view($product_id, $source);
     }
 }
 
